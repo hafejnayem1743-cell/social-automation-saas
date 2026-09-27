@@ -1,0 +1,528 @@
+import os, json, sqlite3, secrets, hashlib, hmac
+from datetime import datetime, timezone, timedelta
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import urlparse
+
+BASE=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DB=os.path.join(BASE,"social_automation.db")
+HOST="127.0.0.1"
+PORT=8000
+PBKDF2=200000
+SESSION_DAYS=30
+ROLES={"owner","admin","member"}
+
+def now():
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+def db():
+    c=sqlite3.connect(DB)
+    c.row_factory=sqlite3.Row
+    c.execute("PRAGMA foreign_keys=ON")
+    return c
+
+def hash_pw(p):
+    s=secrets.token_bytes(16)
+    d=hashlib.pbkdf2_hmac("sha256",p.encode(),s,PBKDF2)
+    return f"pbkdf2_sha256${PBKDF2}${s.hex()}${d.hex()}"
+
+def check_pw(p,v):
+    try:
+        a,it,s,d=v.split("$")
+        x=hashlib.pbkdf2_hmac("sha256",p.encode(),bytes.fromhex(s),int(it))
+        return a=="pbkdf2_sha256" and hmac.compare_digest(x.hex(),d)
+    except Exception:
+        return False
+
+def init_db():
+    c=db()
+    c.executescript("""
+    CREATE TABLE IF NOT EXISTS tenants(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL, created_at TEXT NOT NULL);
+
+    CREATE TABLE IF NOT EXISTS users(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL,
+      email TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'member',
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY(tenant_id) REFERENCES tenants(id) ON DELETE CASCADE);
+
+    CREATE TABLE IF NOT EXISTS sessions(
+      token TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);
+
+    CREATE TABLE IF NOT EXISTS posts(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL,
+      content TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'draft',
+      scheduled_at TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY(tenant_id) REFERENCES tenants(id) ON DELETE CASCADE);
+
+    CREATE TABLE IF NOT EXISTS campaigns(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'draft',
+      created_at TEXT NOT NULL,
+      FOREIGN KEY(tenant_id) REFERENCES tenants(id) ON DELETE CASCADE);
+
+    CREATE TABLE IF NOT EXISTS social_accounts(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL,
+      platform TEXT NOT NULL,
+      account_name TEXT NOT NULL,
+      access_token TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY(tenant_id) REFERENCES tenants(id) ON DELETE CASCADE);
+    """)
+
+    cols={r["name"] for r in c.execute("PRAGMA table_info(sessions)")}
+    if "expires_at" not in cols:
+        c.execute("ALTER TABLE sessions ADD COLUMN expires_at TEXT")
+        c.execute(
+            "UPDATE sessions SET expires_at=? WHERE expires_at IS NULL",
+            ((datetime.now(timezone.utc)+timedelta(days=SESSION_DAYS))
+             .strftime("%Y-%m-%d %H:%M:%S"),))
+
+    cols={r["name"] for r in c.execute("PRAGMA table_info(users)")}
+    if "is_active" not in cols:
+        c.execute("ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
+
+    c.execute(
+        "UPDATE users SET role='owner' WHERE id=1 AND role IS NULL")
+    c.commit()
+    c.close()
+
+def send(h,status,data):
+    b=json.dumps(data,ensure_ascii=False).encode()
+    h.send_response(status)
+    h.send_header("Content-Type","application/json; charset=utf-8")
+    h.send_header("Content-Length",str(len(b)))
+    h.send_header("Cache-Control","no-store")
+    h.end_headers()
+    h.wfile.write(b)
+
+def err(h,status,msg):
+    send(h,status,{"detail":msg})
+
+def body(h):
+    n=int(h.headers.get("Content-Length","0"))
+    if n>1048576: raise ValueError("Request too large")
+    return json.loads(h.rfile.read(n).decode()) if n else {}
+
+def token(h):
+    a=h.headers.get("Authorization","")
+    return a[7:].strip() if a.startswith("Bearer ") else None
+
+def user(h):
+    t=token(h)
+    if not t:return None
+    c=db()
+    r=c.execute("""
+      SELECT u.id,u.email,u.role,u.tenant_id,u.is_active,u.created_at
+      FROM sessions s JOIN users u ON u.id=s.user_id
+      WHERE s.token=? AND u.is_active=1
+        AND datetime(s.expires_at)>datetime('now')
+    """,(t,)).fetchone()
+    c.close()
+    return dict(r) if r else None
+
+def auth(h):
+    u=user(h)
+    if not u: err(h,401,"Authentication required")
+    return u
+
+def role(h,u,allowed):
+    if u["role"] not in allowed:
+        err(h,403,"Insufficient permissions")
+        return False
+    return True
+
+def clean(v):
+    return str(v or "").strip()
+
+class API(BaseHTTPRequestHandler):
+    server_version="SocialAutomationAPI/0.4"
+
+    def log_message(self,f,*a):
+        print("[%s] %s"%(now(),f%a))
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin","http://127.0.0.1:5173")
+        self.send_header("Access-Control-Allow-Headers","Content-Type, Authorization")
+        self.send_header("Access-Control-Allow-Methods","GET, POST, PUT, DELETE, OPTIONS")
+        self.end_headers()
+
+    def do_GET(self):
+        try:
+            p=urlparse(self.path).path
+
+            if p=="/health":
+                return send(self,200,{"status":"ok","service":"api"})
+
+            if p=="/":
+                return send(self,200,{
+                    "service":"social-automation-api",
+                    "version":"0.4.0","status":"online"})
+
+            if p=="/api/status":
+                return send(self,200,{
+                    "status":"ok",
+                    "service":"social-automation-api",
+                    "version":"0.4.0"})
+
+            u=auth(self)
+            if not u:return
+
+            if p=="/api/me":
+                return send(self,200,{"user":{
+                    "id":u["id"],"email":u["email"],"role":u["role"],
+                    "tenant_id":u["tenant_id"],
+                    "is_active":bool(u["is_active"])}})
+
+            c=db()
+
+            if p=="/api/tenants":
+                r=c.execute(
+                    "SELECT id,name,created_at FROM tenants WHERE id=?",
+                    (u["tenant_id"],)).fetchone()
+                c.close()
+                return send(self,200,{"tenant":dict(r) if r else None})
+
+            if p=="/api/users":
+                rs=c.execute("""
+                    SELECT id,email,role,is_active,created_at
+                    FROM users WHERE tenant_id=? ORDER BY id
+                """,(u["tenant_id"],)).fetchall()
+                c.close()
+                return send(self,200,{"items":[dict(x) for x in rs]})
+
+            if p=="/api/posts":
+                rs=c.execute("""
+                    SELECT id,content,status,scheduled_at,created_at
+                    FROM posts WHERE tenant_id=? ORDER BY id DESC
+                """,(u["tenant_id"],)).fetchall()
+                c.close()
+                return send(self,200,{"items":[dict(x) for x in rs]})
+
+            if p=="/api/campaigns":
+                rs=c.execute("""
+                    SELECT id,name,status,created_at
+                    FROM campaigns WHERE tenant_id=? ORDER BY id DESC
+                """,(u["tenant_id"],)).fetchall()
+                c.close()
+                return send(self,200,{"items":[dict(x) for x in rs]})
+
+            if p=="/api/social/accounts":
+                rs=c.execute("""
+                    SELECT id,platform,account_name,created_at
+                    FROM social_accounts
+                    WHERE tenant_id=? ORDER BY id DESC
+                """,(u["tenant_id"],)).fetchall()
+                c.close()
+                return send(self,200,{"items":[dict(x) for x in rs]})
+
+            return err(self,404,"Not found")
+        except Exception as e:
+            print("GET ERROR:",repr(e))
+            return err(self,500,"Internal server error")
+
+    def do_POST(self):
+        try:
+            p=urlparse(self.path).path
+            d=body(self)
+
+            if p=="/api/auth/register":
+                email=clean(d.get("email")).lower()
+                pw=clean(d.get("password"))
+                name=clean(d.get("tenant_name"))
+
+                if not email or "@" not in email:
+                    return err(self,400,"Valid email required")
+                if len(pw)<8:
+                    return err(self,400,"Password must be at least 8 characters")
+                if not name or len(name)>100:
+                    return err(self,400,"Valid tenant_name required")
+
+                c=db()
+                if c.execute("SELECT id FROM users WHERE email=?",(email,)).fetchone():
+                    c.close()
+                    return err(self,409,"Email already registered")
+
+                tid=c.execute(
+                    "INSERT INTO tenants(name,created_at) VALUES(?,?)",
+                    (name,now())).lastrowid
+
+                uid=c.execute("""
+                    INSERT INTO users(
+                      tenant_id,email,password_hash,role,is_active,created_at)
+                    VALUES(?,?,?,'owner',1,?)
+                """,(tid,email,hash_pw(pw),now())).lastrowid
+
+                t=secrets.token_urlsafe(32)
+                exp=(datetime.now(timezone.utc)+timedelta(days=SESSION_DAYS)
+                     ).strftime("%Y-%m-%d %H:%M:%S")
+                c.execute(
+                    "INSERT INTO sessions(token,user_id,created_at,expires_at) VALUES(?,?,?,?)",
+                    (t,uid,now(),exp))
+                c.commit();c.close()
+
+                return send(self,201,{
+                    "message":"Registration successful",
+                    "token":t,
+                    "expires_at":exp,
+                    "user":{"id":uid,"email":email,
+                            "role":"owner","tenant_id":tid}})
+
+            if p=="/api/auth/login":
+                email=clean(d.get("email")).lower()
+                pw=clean(d.get("password"))
+                c=db()
+                r=c.execute("""
+                    SELECT id,tenant_id,email,password_hash,role,is_active
+                    FROM users WHERE email=?
+                """,(email,)).fetchone()
+
+                if not r or not r["is_active"] or not check_pw(pw,r["password_hash"]):
+                    c.close()
+                    return err(self,401,"Invalid credentials")
+
+                t=secrets.token_urlsafe(32)
+                exp=(datetime.now(timezone.utc)+timedelta(days=SESSION_DAYS)
+                     ).strftime("%Y-%m-%d %H:%M:%S")
+                c.execute(
+                    "INSERT INTO sessions(token,user_id,created_at,expires_at) VALUES(?,?,?,?)",
+                    (t,r["id"],now(),exp))
+                c.commit();c.close()
+
+                return send(self,200,{
+                    "message":"Login successful","token":t,"expires_at":exp,
+                    "user":{"id":r["id"],"email":r["email"],
+                            "role":r["role"],"tenant_id":r["tenant_id"]}})
+
+            u=auth(self)
+            if not u:return
+
+            if p=="/api/auth/logout":
+                t=token(self)
+                c=db();c.execute("DELETE FROM sessions WHERE token=?",(t,))
+                c.commit();c.close()
+                return send(self,200,{"message":"Logged out"})
+
+            if p=="/api/users":
+                if not role(self,u,{"owner","admin"}):return
+                email=clean(d.get("email")).lower()
+                pw=clean(d.get("password"))
+                r=clean(d.get("role") or "member").lower()
+
+                if not email or "@" not in email:
+                    return err(self,400,"Valid email required")
+                if len(pw)<8:
+                    return err(self,400,"Password must be at least 8 characters")
+                if r not in ROLES:
+                    return err(self,400,"Invalid role")
+                if u["role"]=="admin" and r=="owner":
+                    return err(self,403,"Admin cannot create owner")
+
+                c=db()
+                if c.execute("SELECT id FROM users WHERE email=?",(email,)).fetchone():
+                    c.close();return err(self,409,"Email already registered")
+
+                uid=c.execute("""
+                    INSERT INTO users(
+                      tenant_id,email,password_hash,role,is_active,created_at)
+                    VALUES(?,?,?,?,1,?)
+                """,(u["tenant_id"],email,hash_pw(pw),r,now())).lastrowid
+                c.commit();c.close()
+
+                return send(self,201,{
+                    "message":"User created",
+                    "user":{"id":uid,"email":email,"role":r,
+                            "tenant_id":u["tenant_id"],"is_active":True}})
+
+            if p=="/api/posts":
+                content=clean(d.get("content"))
+                status=clean(d.get("status") or "draft").lower()
+                scheduled=d.get("scheduled_at")
+                if not content:return err(self,400,"content is required")
+                if len(content)>10000:return err(self,400,"content is too long")
+                if status not in {"draft","scheduled","published","failed"}:
+                    return err(self,400,"Invalid post status")
+
+                c=db()
+                pid=c.execute("""
+                    INSERT INTO posts(
+                      tenant_id,content,status,scheduled_at,created_at)
+                    VALUES(?,?,?,?,?)
+                """,(u["tenant_id"],content,status,scheduled,now())).lastrowid
+                c.commit();c.close()
+                return send(self,201,{"message":"Post created","id":pid,
+                                      "tenant_id":u["tenant_id"]})
+
+            if p=="/api/campaigns":
+                name=clean(d.get("name"))
+                status=clean(d.get("status") or "draft").lower()
+                if not name:return err(self,400,"name is required")
+                if status not in {"draft","active","paused","completed"}:
+                    return err(self,400,"Invalid campaign status")
+
+                c=db()
+                cid=c.execute("""
+                    INSERT INTO campaigns(tenant_id,name,status,created_at)
+                    VALUES(?,?,?,?)
+                """,(u["tenant_id"],name,status,now())).lastrowid
+                c.commit();c.close()
+                return send(self,201,{"message":"Campaign created","id":cid,
+                                      "tenant_id":u["tenant_id"]})
+
+            if p=="/api/social/accounts":
+                if not role(self,u,{"owner","admin"}):return
+                platform=clean(d.get("platform")).lower()
+                account=clean(d.get("account_name"))
+                access=clean(d.get("access_token"))
+
+                if not platform or not account:
+                    return err(self,400,"platform and account_name are required")
+
+                c=db()
+                aid=c.execute("""
+                    INSERT INTO social_accounts(
+                      tenant_id,platform,account_name,access_token,created_at)
+                    VALUES(?,?,?,?,?)
+                """,(u["tenant_id"],platform,account,access,now())).lastrowid
+                c.commit();c.close()
+
+                return send(self,201,{
+                    "message":"Social account added","id":aid,
+                    "tenant_id":u["tenant_id"]})
+
+            return err(self,404,"Not found")
+        except json.JSONDecodeError:
+            return err(self,400,"Invalid JSON")
+        except Exception as e:
+            print("POST ERROR:",repr(e))
+            return err(self,500,"Internal server error")
+
+    def do_PUT(self):
+        try:
+            p=urlparse(self.path).path
+            d=body(self)
+            u=auth(self)
+            if not u:return
+
+            if p.startswith("/api/users/"):
+                if not role(self,u,{"owner","admin"}):return
+
+                try:tid=int(p.rsplit("/",1)[1])
+                except:return err(self,400,"Invalid user id")
+
+                c=db()
+                target=c.execute("""
+                    SELECT id,tenant_id,role,is_active
+                    FROM users WHERE id=?
+                """,(tid,)).fetchone()
+
+                if not target or target["tenant_id"]!=u["tenant_id"]:
+                    c.close();return err(self,404,"User not found")
+
+                if tid==u["id"]:
+                    c.close();return err(self,400,"You cannot modify yourself here")
+
+                if target["role"]=="owner" and u["role"]!="owner":
+                    c.close();return err(self,403,"Only owner can modify owner")
+
+                if u["role"]=="admin" and target["role"]=="admin":
+                    c.close();return err(self,403,"Admin cannot modify another admin")
+
+                updates=[];vals=[]
+                if "role" in d:
+                    nr=clean(d["role"]).lower()
+                    if nr not in ROLES:
+                        c.close();return err(self,400,"Invalid role")
+                    if u["role"]=="admin" and nr=="owner":
+                        c.close();return err(self,403,"Admin cannot promote to owner")
+                    updates.append("role=?");vals.append(nr)
+
+                if "is_active" in d:
+                    updates.append("is_active=?")
+                    vals.append(1 if bool(d["is_active"]) else 0)
+
+                if not updates:
+                    c.close();return err(self,400,"Nothing to update")
+
+                vals.append(tid)
+                c.execute("UPDATE users SET "+",".join(updates)+" WHERE id=?",vals)
+
+                # Deactivating a user immediately revokes all sessions.
+                if "is_active" in d and not bool(d["is_active"]):
+                    c.execute("DELETE FROM sessions WHERE user_id=?",(tid,))
+
+                c.commit();c.close()
+                return send(self,200,{"message":"User updated","id":tid})
+
+            return err(self,404,"Not found")
+        except json.JSONDecodeError:
+            return err(self,400,"Invalid JSON")
+        except Exception as e:
+            print("PUT ERROR:",repr(e))
+            return err(self,500,"Internal server error")
+
+    def do_DELETE(self):
+        try:
+            p=urlparse(self.path).path
+            u=auth(self)
+            if not u:return
+
+            if p.startswith("/api/users/"):
+                if not role(self,u,{"owner"}):return
+
+                try:tid=int(p.rsplit("/",1)[1])
+                except:return err(self,400,"Invalid user id")
+
+                if tid==u["id"]:
+                    return err(self,400,"Owner cannot delete self")
+
+                c=db()
+                target=c.execute(
+                    "SELECT id,tenant_id,role FROM users WHERE id=?",(tid,)).fetchone()
+
+                if not target or target["tenant_id"]!=u["tenant_id"]:
+                    c.close();return err(self,404,"User not found")
+
+                if target["role"]=="owner":
+                    c.close();return err(self,403,"Owner cannot be deleted")
+
+                c.execute("DELETE FROM users WHERE id=?",(tid,))
+                c.commit();c.close()
+                return send(self,200,{"message":"User deleted","id":tid})
+
+            return err(self,404,"Not found")
+        except Exception as e:
+            print("DELETE ERROR:",repr(e))
+            return err(self,500,"Internal server error")
+
+def main():
+    init_db()
+    print("==============================================")
+    print(" NAYEM BOSS SOCIAL AUTOMATION API")
+    print(" Version: 0.4.0")
+    print(" SECURITY + RBAC + MULTI-TENANT")
+    print(" Session expiry: 30 days")
+    print(f" Running on http://{HOST}:{PORT}")
+    print("==============================================")
+    s=ThreadingHTTPServer((HOST,PORT),API)
+    try:s.serve_forever()
+    except KeyboardInterrupt:print("\nServer stopped.")
+    finally:s.server_close()
+
+if __name__=="__main__":
+    main()

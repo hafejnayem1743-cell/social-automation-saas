@@ -1,0 +1,771 @@
+import os
+import json
+import sqlite3
+import secrets
+import hashlib
+import hmac
+from datetime import datetime, timezone
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import urlparse
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DB_PATH = os.path.join(BASE_DIR, "social_automation.db")
+HOST = "127.0.0.1"
+PORT = 8000
+
+PBKDF2_ITERATIONS = 200_000
+SESSION_DAYS = 30
+
+
+def now():
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def db():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    return conn
+
+
+def hash_password(password):
+    salt = secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac(
+        "sha256", password.encode(), salt, PBKDF2_ITERATIONS
+    )
+    return f"pbkdf2_sha256${PBKDF2_ITERATIONS}${salt.hex()}${digest.hex()}"
+
+
+def verify_password(password, stored):
+    try:
+        algo, iterations, salt_hex, digest_hex = stored.split("$")
+        if algo != "pbkdf2_sha256":
+            return False
+        digest = hashlib.pbkdf2_hmac(
+            "sha256",
+            password.encode(),
+            bytes.fromhex(salt_hex),
+            int(iterations),
+        )
+        return hmac.compare_digest(digest.hex(), digest_hex)
+    except Exception:
+        return False
+
+
+def init_db():
+    conn = db()
+    cur = conn.cursor()
+
+    cur.executescript("""
+    CREATE TABLE IF NOT EXISTS tenants (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tenant_id INTEGER NOT NULL,
+        email TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'member',
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS sessions (
+        token TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS posts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tenant_id INTEGER NOT NULL,
+        content TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'draft',
+        scheduled_at TEXT,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS campaigns (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tenant_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'draft',
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS social_accounts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tenant_id INTEGER NOT NULL,
+        platform TEXT NOT NULL,
+        account_name TEXT NOT NULL,
+        access_token TEXT,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+    );
+    """)
+
+    # Safe migrations for databases created by the previous version.
+    existing = {
+        row["name"]
+        for row in conn.execute("PRAGMA table_info(users)").fetchall()
+    }
+
+    if "is_active" not in existing:
+        conn.execute(
+            "ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1"
+        )
+
+    # Existing first user is the original workspace owner.
+    conn.execute(
+        "UPDATE users SET role='owner' WHERE id=1 AND (role IS NULL OR role='member')"
+    )
+
+    conn.commit()
+    conn.close()
+
+
+def json_bytes(data):
+    return json.dumps(data, ensure_ascii=False).encode("utf-8")
+
+
+def send_json(handler, status, data):
+    body = json_bytes(data)
+    handler.send_response(status)
+    handler.send_header("Content-Type", "application/json; charset=utf-8")
+    handler.send_header("Content-Length", str(len(body)))
+    handler.end_headers()
+    handler.wfile.write(body)
+
+
+def error(handler, status, message):
+    send_json(handler, status, {"detail": message})
+
+
+def read_json(handler):
+    length = int(handler.headers.get("Content-Length", "0"))
+    if length <= 0:
+        return {}
+    if length > 1024 * 1024:
+        raise ValueError("Request body too large")
+    raw = handler.rfile.read(length)
+    return json.loads(raw.decode("utf-8"))
+
+
+def token_from_request(handler):
+    auth = handler.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        return None
+    token = auth[7:].strip()
+    return token or None
+
+
+def current_user(handler):
+    token = token_from_request(handler)
+    if not token:
+        return None
+
+    conn = db()
+    row = conn.execute("""
+        SELECT
+            u.id,
+            u.email,
+            u.role,
+            u.tenant_id,
+            u.is_active,
+            u.created_at
+        FROM sessions s
+        JOIN users u ON u.id = s.user_id
+        WHERE s.token = ?
+    """, (token,)).fetchone()
+    conn.close()
+
+    if not row or not row["is_active"]:
+        return None
+
+    return dict(row)
+
+
+def require_user(handler):
+    user = current_user(handler)
+    if not user:
+        error(handler, 401, "Authentication required")
+        return None
+    return user
+
+
+def require_role(handler, user, roles):
+    if user["role"] not in roles:
+        error(handler, 403, "Insufficient permissions")
+        return False
+    return True
+
+
+def clean_email(value):
+    return str(value or "").strip().lower()
+
+
+def valid_role(role):
+    return role in {"owner", "admin", "member"}
+
+
+class APIHandler(BaseHTTPRequestHandler):
+    server_version = "SocialAutomationAPI/0.3"
+
+    def log_message(self, fmt, *args):
+        print("[%s] %s" % (now(), fmt % args))
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header(
+            "Access-Control-Allow-Headers",
+            "Content-Type, Authorization"
+        )
+        self.send_header(
+            "Access-Control-Allow-Methods",
+            "GET, POST, PUT, DELETE, OPTIONS"
+        )
+        self.end_headers()
+
+    def send_error_json(self, status, message):
+        error(self, status, message)
+
+    def do_GET(self):
+        try:
+            path = urlparse(self.path).path
+
+            if path == "/":
+                return send_json(self, 200, {
+                    "service": "social-automation-api",
+                    "version": "0.3.0",
+                    "status": "online"
+                })
+
+            if path == "/health":
+                return send_json(self, 200, {
+                    "status": "ok",
+                    "service": "api"
+                })
+
+            if path == "/api/status":
+                return send_json(self, 200, {
+                    "status": "ok",
+                    "service": "social-automation-api",
+                    "version": "0.3.0"
+                })
+
+            if path == "/api/me":
+                user = require_user(self)
+                if user:
+                    return send_json(self, 200, {
+                        "user": {
+                            "id": user["id"],
+                            "email": user["email"],
+                            "role": user["role"],
+                            "tenant_id": user["tenant_id"],
+                            "is_active": bool(user["is_active"])
+                        }
+                    })
+                return
+
+            if path == "/api/tenants":
+                user = require_user(self)
+                if not user:
+                    return
+
+                conn = db()
+                tenant = conn.execute(
+                    "SELECT id, name, created_at FROM tenants WHERE id=?",
+                    (user["tenant_id"],)
+                ).fetchone()
+                conn.close()
+
+                return send_json(self, 200, {
+                    "tenant": dict(tenant) if tenant else None
+                })
+
+            if path == "/api/users":
+                user = require_user(self)
+                if not user:
+                    return
+
+                conn = db()
+                rows = conn.execute("""
+                    SELECT id, email, role, is_active, created_at
+                    FROM users
+                    WHERE tenant_id=?
+                    ORDER BY id ASC
+                """, (user["tenant_id"],)).fetchall()
+                conn.close()
+
+                return send_json(self, 200, {
+                    "items": [dict(row) for row in rows]
+                })
+
+            if path == "/api/posts":
+                user = require_user(self)
+                if not user:
+                    return
+
+                conn = db()
+                rows = conn.execute("""
+                    SELECT id, content, status, scheduled_at, created_at
+                    FROM posts
+                    WHERE tenant_id=?
+                    ORDER BY id DESC
+                """, (user["tenant_id"],)).fetchall()
+                conn.close()
+
+                return send_json(self, 200, {
+                    "items": [dict(row) for row in rows]
+                })
+
+            if path == "/api/campaigns":
+                user = require_user(self)
+                if not user:
+                    return
+
+                conn = db()
+                rows = conn.execute("""
+                    SELECT id, name, status, created_at
+                    FROM campaigns
+                    WHERE tenant_id=?
+                    ORDER BY id DESC
+                """, (user["tenant_id"],)).fetchall()
+                conn.close()
+
+                return send_json(self, 200, {
+                    "items": [dict(row) for row in rows]
+                })
+
+            if path == "/api/social/accounts":
+                user = require_user(self)
+                if not user:
+                    return
+
+                conn = db()
+                rows = conn.execute("""
+                    SELECT id, platform, account_name, created_at
+                    FROM social_accounts
+                    WHERE tenant_id=?
+                    ORDER BY id DESC
+                """, (user["tenant_id"],)).fetchall()
+                conn.close()
+
+                return send_json(self, 200, {
+                    "items": [dict(row) for row in rows]
+                })
+
+            return error(self, 404, "Not found")
+
+        except Exception as exc:
+            print("GET ERROR:", repr(exc))
+            return error(self, 500, "Internal server error")
+
+    def do_POST(self):
+        try:
+            path = urlparse(self.path).path
+            data = read_json(self)
+
+            if path == "/api/auth/register":
+                email = clean_email(data.get("email"))
+                password = str(data.get("password") or "")
+                tenant_name = str(data.get("tenant_name") or "").strip()
+
+                if not email or "@" not in email:
+                    return error(self, 400, "Valid email required")
+
+                if len(password) < 8:
+                    return error(
+                        self, 400,
+                        "Password must be at least 8 characters"
+                    )
+
+                if not tenant_name or len(tenant_name) > 100:
+                    return error(self, 400, "Valid tenant_name required")
+
+                conn = db()
+
+                if conn.execute(
+                    "SELECT id FROM users WHERE email=?",
+                    (email,)
+                ).fetchone():
+                    conn.close()
+                    return error(self, 409, "Email already registered")
+
+                tenant_id = conn.execute("""
+                    INSERT INTO tenants(name, created_at)
+                    VALUES(?, ?)
+                """, (tenant_name, now())).lastrowid
+
+                user_id = conn.execute("""
+                    INSERT INTO users(
+                        tenant_id, email, password_hash, role,
+                        is_active, created_at
+                    )
+                    VALUES(?, ?, ?, 'owner', 1, ?)
+                """, (
+                    tenant_id,
+                    email,
+                    hash_password(password),
+                    now()
+                )).lastrowid
+
+                token = secrets.token_urlsafe(32)
+
+                conn.execute("""
+                    INSERT INTO sessions(token, user_id, created_at)
+                    VALUES(?, ?, ?)
+                """, (token, user_id, now()))
+
+                conn.commit()
+                conn.close()
+
+                return send_json(self, 201, {
+                    "message": "Registration successful",
+                    "token": token,
+                    "user": {
+                        "id": user_id,
+                        "email": email,
+                        "role": "owner",
+                        "tenant_id": tenant_id
+                    }
+                })
+
+            if path == "/api/auth/login":
+                email = clean_email(data.get("email"))
+                password = str(data.get("password") or "")
+
+                conn = db()
+                user = conn.execute("""
+                    SELECT id, tenant_id, email, password_hash, role, is_active
+                    FROM users
+                    WHERE email=?
+                """, (email,)).fetchone()
+
+                if not user or not user["is_active"]:
+                    conn.close()
+                    return error(self, 401, "Invalid credentials")
+
+                if not verify_password(password, user["password_hash"]):
+                    conn.close()
+                    return error(self, 401, "Invalid credentials")
+
+                token = secrets.token_urlsafe(32)
+
+                conn.execute("""
+                    INSERT INTO sessions(token, user_id, created_at)
+                    VALUES(?, ?, ?)
+                """, (token, user["id"], now()))
+
+                conn.commit()
+                conn.close()
+
+                return send_json(self, 200, {
+                    "message": "Login successful",
+                    "token": token,
+                    "user": {
+                        "id": user["id"],
+                        "email": user["email"],
+                        "role": user["role"],
+                        "tenant_id": user["tenant_id"]
+                    }
+                })
+
+            user = require_user(self)
+            if not user:
+                return
+
+            if path == "/api/users":
+                if not require_role(self, user, {"owner", "admin"}):
+                    return
+
+                email = clean_email(data.get("email"))
+                password = str(data.get("password") or "")
+                role = str(data.get("role") or "member").lower()
+
+                if not email or "@" not in email:
+                    return error(self, 400, "Valid email required")
+
+                if len(password) < 8:
+                    return error(self, 400, "Password must be at least 8 characters")
+
+                if not valid_role(role):
+                    return error(self, 400, "Invalid role")
+
+                # Admins cannot create owners.
+                if user["role"] == "admin" and role == "owner":
+                    return error(self, 403, "Admin cannot create owner")
+
+                conn = db()
+
+                if conn.execute(
+                    "SELECT id FROM users WHERE email=?",
+                    (email,)
+                ).fetchone():
+                    conn.close()
+                    return error(self, 409, "Email already registered")
+
+                user_id = conn.execute("""
+                    INSERT INTO users(
+                        tenant_id, email, password_hash, role,
+                        is_active, created_at
+                    )
+                    VALUES(?, ?, ?, ?, 1, ?)
+                """, (
+                    user["tenant_id"],
+                    email,
+                    hash_password(password),
+                    role,
+                    now()
+                )).lastrowid
+
+                conn.commit()
+                conn.close()
+
+                return send_json(self, 201, {
+                    "message": "User created",
+                    "user": {
+                        "id": user_id,
+                        "email": email,
+                        "role": role,
+                        "tenant_id": user["tenant_id"],
+                        "is_active": True
+                    }
+                })
+
+            if path == "/api/posts":
+                content = str(data.get("content") or "").strip()
+                status = str(data.get("status") or "draft").lower()
+                scheduled_at = data.get("scheduled_at")
+
+                if not content:
+                    return error(self, 400, "content is required")
+
+                if len(content) > 10000:
+                    return error(self, 400, "content is too long")
+
+                if status not in {"draft", "scheduled", "published", "failed"}:
+                    return error(self, 400, "Invalid post status")
+
+                conn = db()
+                post_id = conn.execute("""
+                    INSERT INTO posts(
+                        tenant_id, content, status,
+                        scheduled_at, created_at
+                    )
+                    VALUES(?, ?, ?, ?, ?)
+                """, (
+                    user["tenant_id"],
+                    content,
+                    status,
+                    scheduled_at,
+                    now()
+                )).lastrowid
+                conn.commit()
+                conn.close()
+
+                return send_json(self, 201, {
+                    "message": "Post created",
+                    "id": post_id,
+                    "tenant_id": user["tenant_id"]
+                })
+
+            if path == "/api/campaigns":
+                name = str(data.get("name") or "").strip()
+                status = str(data.get("status") or "draft").lower()
+
+                if not name:
+                    return error(self, 400, "name is required")
+
+                if len(name) > 200:
+                    return error(self, 400, "name is too long")
+
+                if status not in {"draft", "active", "paused", "completed"}:
+                    return error(self, 400, "Invalid campaign status")
+
+                conn = db()
+                campaign_id = conn.execute("""
+                    INSERT INTO campaigns(
+                        tenant_id, name, status, created_at
+                    )
+                    VALUES(?, ?, ?, ?)
+                """, (
+                    user["tenant_id"],
+                    name,
+                    status,
+                    now()
+                )).lastrowid
+                conn.commit()
+                conn.close()
+
+                return send_json(self, 201, {
+                    "message": "Campaign created",
+                    "id": campaign_id,
+                    "tenant_id": user["tenant_id"]
+                })
+
+            if path == "/api/social/accounts":
+                if not require_role(self, user, {"owner", "admin"}):
+                    return
+
+                platform = str(data.get("platform") or "").strip().lower()
+                account_name = str(data.get("account_name") or "").strip()
+                access_token = str(data.get("access_token") or "")
+
+                if not platform or not account_name:
+                    return error(
+                        self, 400,
+                        "platform and account_name are required"
+                    )
+
+                conn = db()
+                account_id = conn.execute("""
+                    INSERT INTO social_accounts(
+                        tenant_id, platform, account_name,
+                        access_token, created_at
+                    )
+                    VALUES(?, ?, ?, ?, ?)
+                """, (
+                    user["tenant_id"],
+                    platform,
+                    account_name,
+                    access_token,
+                    now()
+                )).lastrowid
+
+                conn.commit()
+                conn.close()
+
+                return send_json(self, 201, {
+                    "message": "Social account added",
+                    "id": account_id,
+                    "tenant_id": user["tenant_id"]
+                })
+
+            return error(self, 404, "Not found")
+
+        except json.JSONDecodeError:
+            return error(self, 400, "Invalid JSON")
+
+        except Exception as exc:
+            print("POST ERROR:", repr(exc))
+            return error(self, 500, "Internal server error")
+
+    def do_PUT(self):
+        try:
+            path = urlparse(self.path).path
+            data = read_json(self)
+            user = require_user(self)
+            if not user:
+                return
+
+            if path.startswith("/api/users/"):
+                if not require_role(self, user, {"owner", "admin"}):
+                    return
+
+                try:
+                    target_id = int(path.rsplit("/", 1)[1])
+                except ValueError:
+                    return error(self, 400, "Invalid user id")
+
+                conn = db()
+                target = conn.execute("""
+                    SELECT id, tenant_id, role, is_active
+                    FROM users WHERE id=?
+                """, (target_id,)).fetchone()
+
+                if not target or target["tenant_id"] != user["tenant_id"]:
+                    conn.close()
+                    return error(self, 404, "User not found")
+
+                if target["id"] == user["id"]:
+                    conn.close()
+                    return error(self, 400, "You cannot modify yourself here")
+
+                new_role = data.get("role")
+                is_active = data.get("is_active")
+
+                if user["role"] == "admin" and new_role == "owner":
+                    conn.close()
+                    return error(self, 403, "Admin cannot promote to owner")
+
+                if new_role is not None and not valid_role(str(new_role)):
+                    conn.close()
+                    return error(self, 400, "Invalid role")
+
+                if target["role"] == "owner" and user["role"] != "owner":
+                    conn.close()
+                    return error(self, 403, "Only owner can modify owner")
+
+                if user["role"] == "admin" and target["role"] == "admin":
+                    conn.close()
+                    return error(self, 403, "Admin cannot modify another admin")
+
+                updates = []
+                values = []
+
+                if new_role is not None:
+                    updates.append("role=?")
+                    values.append(str(new_role))
+
+                if is_active is not None:
+                    updates.append("is_active=?")
+                    values.append(1 if bool(is_active) else 0)
+
+                if not updates:
+                    conn.close()
+                    return error(self, 400, "Nothing to update")
+
+                values.append(target_id)
+                conn.execute(
+                    "UPDATE users SET " + ", ".join(updates) + " WHERE id=?",
+                    values
+                )
+                conn.commit()
+                conn.close()
+
+                return send_json(self, 200, {
+                    "message": "User updated",
+                    "id": target_id
+                })
+
+            return error(self, 404, "Not found")
+
+        except json.JSONDecodeError:
+            return error(self, 400, "Invalid JSON")
+
+        except Exception as exc:
+            print("PUT ERROR:", repr(exc))
+            return error(self, 500, "Internal server error")
+
+
+def main():
+    init_db()
+
+    print("==============================================")
+    print(" NAYEM BOSS SOCIAL AUTOMATION API")
+    print(" Version: 0.3.0")
+    print(" Auth + RBAC + Multi-Tenant Foundation")
+    print(f" Running on http://{HOST}:{PORT}")
+    print("==============================================")
+
+    server = ThreadingHTTPServer((HOST, PORT), APIHandler)
+
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nServer stopped.")
+    finally:
+        server.server_close()
+
+
+if __name__ == "__main__":
+    main()

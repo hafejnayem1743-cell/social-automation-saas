@@ -1,0 +1,376 @@
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import json
+import sqlite3
+import hashlib
+import secrets
+from urllib.parse import urlparse
+
+HOST = "0.0.0.0"
+PORT = 8000
+DB = "social_automation.db"
+
+def db():
+    conn = sqlite3.connect(DB)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def init_db():
+    conn = db()
+    conn.executescript("""
+    CREATE TABLE IF NOT EXISTS tenants (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tenant_id INTEGER NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'owner',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS sessions (
+        token TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS posts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tenant_id INTEGER NOT NULL,
+        content TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'draft',
+        scheduled_at TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS campaigns (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tenant_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'draft',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS social_accounts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tenant_id INTEGER NOT NULL,
+        platform TEXT NOT NULL,
+        account_name TEXT NOT NULL,
+        access_token TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id)
+    );
+    """)
+    conn.commit()
+    conn.close()
+
+def hash_password(password, salt=None):
+    salt = salt or secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac(
+        "sha256", password.encode(), salt.encode(), 200000
+    ).hex()
+    return f"{salt}${digest}"
+
+def verify_password(password, stored):
+    try:
+        salt, old_digest = stored.split("$", 1)
+        new_digest = hashlib.pbkdf2_hmac(
+            "sha256", password.encode(), salt.encode(), 200000
+        ).hex()
+        return secrets.compare_digest(new_digest, old_digest)
+    except ValueError:
+        return False
+
+def body_json(handler):
+    length = int(handler.headers.get("Content-Length", "0"))
+    raw = handler.rfile.read(length)
+    try:
+        return json.loads(raw.decode() or "{}")
+    except Exception:
+        return None
+
+def response(handler, data, status=200):
+    body = json.dumps(data).encode()
+    handler.send_response(status)
+    handler.send_header("Content-Type", "application/json")
+    handler.send_header("Content-Length", str(len(body)))
+    handler.end_headers()
+    handler.wfile.write(body)
+
+def auth_user(handler):
+    token = handler.headers.get("Authorization", "")
+    if token.startswith("Bearer "):
+        token = token[7:].strip()
+
+    if not token:
+        return None
+
+    conn = db()
+    row = conn.execute("""
+        SELECT users.id, users.email, users.role, users.tenant_id
+        FROM sessions
+        JOIN users ON users.id = sessions.user_id
+        WHERE sessions.token = ?
+    """, (token,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+class APIHandler(BaseHTTPRequestHandler):
+
+    def do_GET(self):
+        path = urlparse(self.path).path
+
+        if path == "/health":
+            return response(self, {
+                "status": "ok",
+                "service": "api"
+            })
+
+        if path == "/":
+            return response(self, {
+                "name": "NAYEM BOSS SOCIAL AUTOMATION",
+                "version": "0.2.0",
+                "status": "online"
+            })
+
+        if path == "/api/status":
+            return response(self, {
+                "status": "ok",
+                "service": "social-automation-api",
+                "version": "0.2.0",
+                "database": "sqlite"
+            })
+
+        if path == "/api/me":
+            user = auth_user(self)
+            if not user:
+                return response(self, {"detail": "Authentication required"}, 401)
+            return response(self, {"user": user})
+
+        if path == "/api/tenants":
+            user = auth_user(self)
+            if not user:
+                return response(self, {"detail": "Authentication required"}, 401)
+
+            conn = db()
+            tenant = conn.execute(
+                "SELECT id, name, created_at FROM tenants WHERE id = ?",
+                (user["tenant_id"],)
+            ).fetchone()
+            conn.close()
+            return response(self, {"tenant": dict(tenant)})
+
+        if path == "/api/posts":
+            user = auth_user(self)
+            if not user:
+                return response(self, {"detail": "Authentication required"}, 401)
+
+            conn = db()
+            rows = conn.execute("""
+                SELECT id, content, status, scheduled_at, created_at
+                FROM posts
+                WHERE tenant_id = ?
+                ORDER BY id DESC
+            """, (user["tenant_id"],)).fetchall()
+            conn.close()
+            return response(self, {"items": [dict(x) for x in rows]})
+
+        if path == "/api/campaigns":
+            user = auth_user(self)
+            if not user:
+                return response(self, {"detail": "Authentication required"}, 401)
+
+            conn = db()
+            rows = conn.execute("""
+                SELECT id, name, status, created_at
+                FROM campaigns
+                WHERE tenant_id = ?
+                ORDER BY id DESC
+            """, (user["tenant_id"],)).fetchall()
+            conn.close()
+            return response(self, {"items": [dict(x) for x in rows]})
+
+        if path == "/api/social/accounts":
+            user = auth_user(self)
+            if not user:
+                return response(self, {"detail": "Authentication required"}, 401)
+
+            conn = db()
+            rows = conn.execute("""
+                SELECT id, platform, account_name, created_at
+                FROM social_accounts
+                WHERE tenant_id = ?
+                ORDER BY id DESC
+            """, (user["tenant_id"],)).fetchall()
+            conn.close()
+            return response(self, {"items": [dict(x) for x in rows]})
+
+        return response(self, {"detail": "Not Found"}, 404)
+
+    def do_POST(self):
+        path = urlparse(self.path).path
+        data = body_json(self)
+
+        if data is None:
+            return response(self, {"detail": "Invalid JSON"}, 400)
+
+        if path == "/api/auth/register":
+            email = str(data.get("email", "")).strip().lower()
+            password = str(data.get("password", ""))
+            tenant_name = str(data.get("tenant_name", "")).strip()
+
+            if not email or not password or not tenant_name:
+                return response(self, {
+                    "detail": "email, password and tenant_name are required"
+                }, 400)
+
+            if len(password) < 8:
+                return response(self, {
+                    "detail": "Password must be at least 8 characters"
+                }, 400)
+
+            conn = db()
+            try:
+                cur = conn.execute(
+                    "INSERT INTO tenants (name) VALUES (?)",
+                    (tenant_name,)
+                )
+                tenant_id = cur.lastrowid
+
+                cur = conn.execute("""
+                    INSERT INTO users
+                    (tenant_id, email, password_hash, role)
+                    VALUES (?, ?, ?, 'owner')
+                """, (tenant_id, email, hash_password(password)))
+
+                user_id = cur.lastrowid
+                token = secrets.token_urlsafe(32)
+
+                conn.execute(
+                    "INSERT INTO sessions (token, user_id) VALUES (?, ?)",
+                    (token, user_id)
+                )
+                conn.commit()
+
+                return response(self, {
+                    "message": "Registration successful",
+                    "token": token,
+                    "user": {
+                        "id": user_id,
+                        "email": email,
+                        "role": "owner",
+                        "tenant_id": tenant_id
+                    }
+                }, 201)
+
+            except sqlite3.IntegrityError:
+                conn.rollback()
+                return response(self, {
+                    "detail": "Email already registered"
+                }, 409)
+            finally:
+                conn.close()
+
+        if path == "/api/auth/login":
+            email = str(data.get("email", "")).strip().lower()
+            password = str(data.get("password", ""))
+
+            conn = db()
+            user = conn.execute("""
+                SELECT id, tenant_id, email, password_hash, role
+                FROM users WHERE email = ?
+            """, (email,)).fetchone()
+
+            if not user or not verify_password(password, user["password_hash"]):
+                conn.close()
+                return response(self, {"detail": "Invalid credentials"}, 401)
+
+            token = secrets.token_urlsafe(32)
+            conn.execute(
+                "INSERT INTO sessions (token, user_id) VALUES (?, ?)",
+                (token, user["id"])
+            )
+            conn.commit()
+            conn.close()
+
+            return response(self, {
+                "message": "Login successful",
+                "token": token,
+                "user": {
+                    "id": user["id"],
+                    "email": user["email"],
+                    "role": user["role"],
+                    "tenant_id": user["tenant_id"]
+                }
+            })
+
+        if path == "/api/posts":
+            user = auth_user(self)
+            if not user:
+                return response(self, {"detail": "Authentication required"}, 401)
+
+            content = str(data.get("content", "")).strip()
+            scheduled_at = data.get("scheduled_at")
+
+            if not content:
+                return response(self, {"detail": "content is required"}, 400)
+
+            conn = db()
+            cur = conn.execute("""
+                INSERT INTO posts (tenant_id, content, status, scheduled_at)
+                VALUES (?, ?, 'draft', ?)
+            """, (user["tenant_id"], content, scheduled_at))
+            conn.commit()
+            post_id = cur.lastrowid
+            conn.close()
+
+            return response(self, {
+                "message": "Post created",
+                "id": post_id,
+                "tenant_id": user["tenant_id"]
+            }, 201)
+
+        if path == "/api/campaigns":
+            user = auth_user(self)
+            if not user:
+                return response(self, {"detail": "Authentication required"}, 401)
+
+            name = str(data.get("name", "")).strip()
+
+            if not name:
+                return response(self, {"detail": "name is required"}, 400)
+
+            conn = db()
+            cur = conn.execute("""
+                INSERT INTO campaigns (tenant_id, name, status)
+                VALUES (?, ?, 'draft')
+            """, (user["tenant_id"], name))
+            conn.commit()
+            campaign_id = cur.lastrowid
+            conn.close()
+
+            return response(self, {
+                "message": "Campaign created",
+                "id": campaign_id,
+                "tenant_id": user["tenant_id"]
+            }, 201)
+
+        return response(self, {"detail": "Not Found"}, 404)
+
+    def log_message(self, format, *args):
+        print("[API]", format % args)
+
+if __name__ == "__main__":
+    init_db()
+    print("NAYEM BOSS SOCIAL AUTOMATION API")
+    print("Version: 0.2.0")
+    print(f"Running on http://127.0.0.1:{PORT}")
+    ThreadingHTTPServer((HOST, PORT), APIHandler).serve_forever()

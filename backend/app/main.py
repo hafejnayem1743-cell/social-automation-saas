@@ -1,0 +1,474 @@
+import json, sqlite3, hashlib, secrets, hmac, os, threading, time
+from datetime import datetime, timedelta
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import urlparse
+
+DB="social_automation.db"
+HOST="127.0.0.1"
+PORT=8000
+SESSION_DAYS=30
+WORKER_INTERVAL=10
+
+def db():
+    c=sqlite3.connect(DB)
+    c.row_factory=sqlite3.Row
+    return c
+
+def now():
+    return datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+
+def init_db():
+    c=db()
+    c.executescript("""
+    CREATE TABLE IF NOT EXISTS oauth_connectors(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tenant_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        platform TEXT NOT NULL,
+        account_name TEXT NOT NULL,
+        platform_user_id TEXT,
+        access_token TEXT,
+        refresh_token TEXT,
+        token_expires_at TEXT,
+        status TEXT NOT NULL DEFAULT 'connected',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS scheduled_jobs(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tenant_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        post_id INTEGER,
+        connector_id INTEGER,
+        scheduled_at TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        attempts INTEGER NOT NULL DEFAULT 0,
+        last_error TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    """)
+    c.close()
+
+def response(handler,status,data):
+    b=json.dumps(data).encode()
+    handler.send_response(status)
+    handler.send_header("Content-Type","application/json")
+    handler.send_header("Content-Length",str(len(b)))
+    handler.send_header("Access-Control-Allow-Origin","http://127.0.0.1:5173")
+    handler.end_headers()
+    handler.wfile.write(b)
+
+def body(handler):
+    n=int(handler.headers.get("Content-Length","0"))
+    try:return json.loads(handler.rfile.read(n).decode()) if n else {}
+    except:return {}
+
+def hash_password(password,salt=None):
+    salt=salt or secrets.token_bytes(16)
+    dk=hashlib.pbkdf2_hmac("sha256",password.encode(),salt,200000)
+    return salt.hex()+"$"+dk.hex()
+
+def verify(password,stored):
+    try:
+        s,h=stored.split("$",1)
+        salt=bytes.fromhex(s)
+        dk=hashlib.pbkdf2_hmac("sha256",password.encode(),salt,200000)
+        return hmac.compare_digest(dk.hex(),h)
+    except:return False
+
+def auth(handler):
+    a=handler.headers.get("Authorization","")
+    if not a.startswith("Bearer "): return None
+    token=a[7:]
+    c=db()
+    r=c.execute("""
+    SELECT u.*,s.token
+    FROM sessions s JOIN users u ON u.id=s.user_id
+    WHERE s.token=? AND datetime(s.expires_at)>datetime('now') AND u.is_active=1
+    """,(token,)).fetchone()
+    c.close()
+    return dict(r) if r else None
+
+def require(handler,roles=None):
+    u=auth(handler)
+    if not u:
+        response(handler,401,{"detail":"Authentication required"})
+        return None
+    if roles and u["role"] not in roles:
+        response(handler,403,{"detail":"Insufficient permissions"})
+        return None
+    return u
+
+def worker():
+    while True:
+        try:
+            c=db()
+            jobs=c.execute("""
+            SELECT * FROM scheduled_jobs
+            WHERE status='pending'
+            AND datetime(scheduled_at)<=datetime('now')
+            ORDER BY id LIMIT 20
+            """).fetchall()
+
+            for j in jobs:
+                c.execute("""
+                UPDATE scheduled_jobs
+                SET status='processing',attempts=attempts+1,updated_at=?
+                WHERE id=? AND status='pending'
+                """,(now(),j["id"]))
+
+                # Connector publishing will be plugged in here.
+                # No fake platform API calls are made.
+                c.execute("""
+                UPDATE scheduled_jobs
+                SET status='ready_for_connector',updated_at=?
+                WHERE id=?
+                """,(now(),j["id"]))
+
+            c.commit()
+            c.close()
+        except Exception:
+            pass
+        time.sleep(WORKER_INTERVAL)
+
+class API(BaseHTTPRequestHandler):
+
+    def log_message(self,*args):
+        pass
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin","http://127.0.0.1:5173")
+        self.send_header("Access-Control-Allow-Headers","Content-Type, Authorization")
+        self.send_header("Access-Control-Allow-Methods","GET,POST,PUT,DELETE,OPTIONS")
+        self.end_headers()
+
+    def do_GET(self):
+        p=urlparse(self.path).path
+
+        if p=="/health":
+            return response(self,200,{"status":"ok","version":"0.5.0"})
+
+        u=require(self)
+        if not u:return
+
+        c=db()
+
+        if p=="/api/me":
+            data={k:u[k] for k in ["id","email","role","tenant_id","is_active"]}
+            c.close()
+            return response(self,200,{"user":data})
+
+        if p=="/api/oauth/connectors":
+            rows=c.execute("""
+            SELECT id,platform,account_name,platform_user_id,
+                   token_expires_at,status,created_at,updated_at
+            FROM oauth_connectors
+            WHERE tenant_id=?
+            ORDER BY id DESC
+            """,(u["tenant_id"],)).fetchall()
+            c.close()
+            return response(self,200,{"connectors":[dict(x) for x in rows]})
+
+        if p=="/api/scheduler/jobs":
+            rows=c.execute("""
+            SELECT id,post_id,connector_id,scheduled_at,status,
+                   attempts,last_error,created_at,updated_at
+            FROM scheduled_jobs
+            WHERE tenant_id=?
+            ORDER BY id DESC
+            """,(u["tenant_id"],)).fetchall()
+            c.close()
+            return response(self,200,{"jobs":[dict(x) for x in rows]})
+
+        if p=="/api/status":
+            count=c.execute(
+                "SELECT COUNT(*) n FROM scheduled_jobs WHERE tenant_id=? AND status='pending'",
+                (u["tenant_id"],)).fetchone()["n"]
+            c.close()
+            return response(self,200,{
+                "version":"0.5.0",
+                "worker":"running",
+                "pending_jobs":count
+            })
+
+        c.close()
+        return response(self,404,{"detail":"Not found"})
+
+    def do_POST(self):
+        p=urlparse(self.path).path
+
+        if p=="/api/auth/login":
+            d=body(self)
+            c=db()
+            u=c.execute("SELECT * FROM users WHERE email=?",(d.get("email",""),)).fetchone()
+            if not u or not u["is_active"] or not verify(d.get("password",""),u["password_hash"]):
+                c.close()
+                return response(self,401,{"detail":"Invalid credentials"})
+
+            token=secrets.token_urlsafe(32)
+            exp=(datetime.utcnow()+timedelta(days=SESSION_DAYS)).strftime("%Y-%m-%d %H:%M:%S")
+            c.execute("INSERT INTO sessions(token,user_id,created_at,expires_at) VALUES(?,?,?,?)",
+                      (token,u["id"],now(),exp))
+            c.commit()
+            c.close()
+            return response(self,200,{"message":"Login successful","token":token,"expires_at":exp,
+                "user":{"id":u["id"],"email":u["email"],"role":u["role"],"tenant_id":u["tenant_id"]}})
+
+        if p=="/api/auth/logout":
+            u=require(self)
+            if not u:return
+            token=self.headers["Authorization"][7:]
+            c=db()
+            c.execute("DELETE FROM sessions WHERE token=?",(token,))
+            c.commit()
+            c.close()
+            return response(self,200,{"message":"Logged out"})
+
+        u=require(self)
+        if not u:return
+
+        d=body(self)
+        c=db()
+
+        if p=="/api/oauth/connectors":
+            if u["role"] not in ("owner","admin"):
+                c.close()
+                return response(self,403,{"detail":"Insufficient permissions"})
+
+            platform=str(d.get("platform","")).strip().lower()
+            account=str(d.get("account_name","")).strip()
+
+            if not platform or not account:
+                c.close()
+                return response(self,400,{"detail":"platform and account_name are required"})
+
+            t=now()
+            cur=c.execute("""
+            INSERT INTO oauth_connectors
+            (tenant_id,user_id,platform,account_name,platform_user_id,
+             access_token,refresh_token,token_expires_at,status,created_at,updated_at)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?)
+            """,(
+                u["tenant_id"],u["id"],platform,account,
+                d.get("platform_user_id"),
+                d.get("access_token"),
+                d.get("refresh_token"),
+                d.get("token_expires_at"),
+                "connected",t,t
+            ))
+            c.commit()
+            cid=cur.lastrowid
+            c.close()
+            return response(self,201,{"message":"OAuth connector saved","id":cid})
+
+        if p=="/api/scheduler/jobs":
+            if u["role"] not in ("owner","admin","member"):
+                c.close()
+                return response(self,403,{"detail":"Insufficient permissions"})
+
+            scheduled=str(d.get("scheduled_at","")).strip()
+            if not scheduled:
+                c.close()
+                return response(self,400,{"detail":"scheduled_at is required"})
+
+            connector_id=d.get("connector_id")
+            if connector_id is not None:
+                r=c.execute("""
+                SELECT id FROM oauth_connectors
+                WHERE id=? AND tenant_id=?
+                """,(connector_id,u["tenant_id"])).fetchone()
+                if not r:
+                    c.close()
+                    return response(self,400,{"detail":"Invalid connector"})
+
+            t=now()
+            cur=c.execute("""
+            INSERT INTO scheduled_jobs
+            (tenant_id,user_id,post_id,connector_id,scheduled_at,status,created_at,updated_at)
+            VALUES(?,?,?,?,?,'pending',?,?)
+            """,(
+                u["tenant_id"],u["id"],d.get("post_id"),
+                connector_id,scheduled,t,t
+            ))
+            c.commit()
+            jid=cur.lastrowid
+            c.close()
+            return response(self,201,{"message":"Scheduled job created","id":jid})
+
+        c.close()
+        return response(self,404,{"detail":"Not found"})
+
+
+# ==================== V0.7 OFFICIAL OAUTH ====================
+
+OAUTH_CONFIG = {
+    "facebook": {
+        "authorize_url": "https://www.facebook.com/v23.0/dialog/oauth",
+        "scopes": ["pages_manage_posts", "pages_read_engagement"]
+    },
+    "instagram": {
+        "authorize_url": "https://www.facebook.com/v23.0/dialog/oauth",
+        "scopes": ["instagram_basic", "instagram_content_publish"]
+    }
+}
+
+def oauth_config(platform):
+    return OAUTH_CONFIG.get(platform)
+
+def build_oauth_url(platform, client_id, redirect_uri, state):
+    from urllib.parse import urlencode
+    cfg = oauth_config(platform)
+    if not cfg:
+        return None
+
+    return cfg["authorize_url"] + "?" + urlencode({
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "state": state,
+        "scope": ",".join(cfg["scopes"]),
+        "response_type": "code"
+    })
+
+print("V0.7 OFFICIAL OAUTH FOUNDATION LOADED")
+
+
+# ==================== UNIVERSAL CONNECTOR RUNTIME ====================
+try:
+    from app.universal_connectors import PLATFORMS, platform_status, CONNECTOR_REGISTRY
+    from app.publishing_engine import publish, get_publisher, PUBLISHERS
+    from app.official_publishers import OFFICIAL_PUBLISHERS
+    PUBLISHERS.update(OFFICIAL_PUBLISHERS)
+    print("UNIVERSAL CONNECTOR RUNTIME: LOADED")
+except Exception as e:
+    print("UNIVERSAL CONNECTOR RUNTIME ERROR:", e)
+
+
+# ==================== UNIVERSAL CONNECTOR RUNTIME ====================
+try:
+    from app.universal_connectors import PLATFORMS, platform_status, CONNECTOR_REGISTRY
+    from app.publishing_engine import publish, get_publisher, PUBLISHERS
+    from app.official_publishers import OFFICIAL_PUBLISHERS
+    PUBLISHERS.update(OFFICIAL_PUBLISHERS)
+    print("UNIVERSAL CONNECTOR RUNTIME: LOADED")
+except Exception as e:
+    print("UNIVERSAL CONNECTOR RUNTIME ERROR:", e)
+
+def main():
+    init_db()
+    threading.Thread(target=worker,daemon=True).start()
+    print("""
+==============================================
+ NAYEM BOSS SOCIAL AUTOMATION API
+ Version: 0.5.0
+ OAUTH CONNECTOR + SCHEDULER FOUNDATION
+ Worker interval: 10 seconds
+ Running on http://127.0.0.1:8000
+==============================================
+""")
+    ThreadingHTTPServer((HOST,PORT),API).serve_forever()
+
+print("V0.6.1 CONNECTOR LAYER LOADED")
+
+if __name__=="__main__":
+    main()
+
+# V0.6.1 CONNECTOR EXECUTION FOUNDATION
+# Official API adapters only. No scraping/browser automation.
+
+class ConnectorResult:
+    def __init__(self, ok, status, message, external_id=None):
+        self.ok = ok
+        self.status = status
+        self.message = message
+        self.external_id = external_id
+
+class BaseConnector:
+    platform = "unknown"
+
+    def publish(self, account, content):
+        raise NotImplementedError
+
+class FacebookConnector(BaseConnector):
+    platform = "facebook"
+
+    def publish(self, account, content):
+        return ConnectorResult(
+            False,
+            "not_configured",
+            "Facebook official API credentials are not configured"
+        )
+
+class InstagramConnector(BaseConnector):
+    platform = "instagram"
+
+    def publish(self, account, content):
+        return ConnectorResult(
+            False,
+            "not_configured",
+            "Instagram official API credentials are not configured"
+        )
+
+class TelegramConnector(BaseConnector):
+    platform = "telegram"
+
+    def publish(self, account, content):
+        return ConnectorResult(
+            False,
+            "not_configured",
+            "Telegram Bot API credentials are not configured"
+        )
+
+CONNECTOR_REGISTRY = {
+    "facebook": FacebookConnector(),
+    "instagram": InstagramConnector(),
+    "telegram": TelegramConnector(),
+}
+
+def get_connector(platform):
+    return CONNECTOR_REGISTRY.get(platform)
+
+print("V0.6.1 CONNECTOR LAYER LOADED")
+
+
+
+# ==================== V0.7.1 OAUTH ROUTES ====================
+
+import os
+import secrets
+from urllib.parse import urlparse
+
+OAUTH_CLIENTS = {
+    "facebook": {
+        "client_id": os.getenv("META_CLIENT_ID", ""),
+        "client_secret": os.getenv("META_CLIENT_SECRET", ""),
+        "redirect_uri": os.getenv("META_REDIRECT_URI", "http://127.0.0.1:8000/api/oauth/callback/facebook"),
+    },
+    "instagram": {
+        "client_id": os.getenv("META_CLIENT_ID", ""),
+        "client_secret": os.getenv("META_CLIENT_SECRET", ""),
+        "redirect_uri": os.getenv("META_REDIRECT_URI", "http://127.0.0.1:8000/api/oauth/callback/instagram"),
+    },
+}
+
+def create_oauth_state():
+    return secrets.token_urlsafe(32)
+
+print("V0.7.1 OAUTH ROUTE FOUNDATION LOADED")
+
+
+try:
+    from app.universal_connectors import PLATFORMS, platform_status, CONNECTOR_REGISTRY
+    print("UNIVERSAL PLATFORM ENGINE LOADED")
+except Exception as e:
+    print("UNIVERSAL PLATFORM ENGINE ERROR:", e)
+
+
+try:
+    from app.publishing_engine import publish, get_publisher, PUBLISHERS
+    print("UNIVERSAL PUBLISHING ENGINE LOADED")
+except Exception as e:
+    print("PUBLISHING ENGINE ERROR:", e)
+
