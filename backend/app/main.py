@@ -260,6 +260,16 @@ class API(BaseHTTPRequestHandler):
             c.close()
             return response(self,200,{"posts":[dict(x) for x in rows]})
 
+        if p=="/api/campaigns":
+            c=db()
+            rows=c.execute(
+                "SELECT id,tenant_id,name,status,created_at FROM campaigns "
+                "WHERE tenant_id=? ORDER BY id DESC",
+                (u["tenant_id"],)
+            ).fetchall()
+            c.close()
+            return response(self,200,{"campaigns":[dict(r) for r in rows]})
+
         if p=="/api/oauth/connectors":
             rows=c.execute("""
             SELECT id,platform,account_name,platform_user_id,
@@ -282,6 +292,16 @@ class API(BaseHTTPRequestHandler):
             c.close()
             return response(self,200,{"jobs":[dict(x) for x in rows]})
 
+        if p=="/api/campaigns":
+            c=db()
+            rows=c.execute(
+                "SELECT id,tenant_id,name,status,created_at FROM campaigns "
+                "WHERE tenant_id=? ORDER BY id DESC",
+                (u["tenant_id"],)
+            ).fetchall()
+            c.close()
+            return response(self,200,{"campaigns":[dict(r) for r in rows]})
+
         if p=="/api/status":
             count=c.execute(
                 "SELECT COUNT(*) n FROM scheduled_jobs WHERE tenant_id=? AND status='pending'",
@@ -300,6 +320,81 @@ class API(BaseHTTPRequestHandler):
         p=urlparse(self.path).path
         u=require(self)
         if not u:return
+
+        if p.startswith("/api/campaigns/"):
+            try:
+                cid=int(p.rsplit("/",1)[1])
+            except ValueError:
+                return response(self,400,{"detail":"Invalid campaign id"})
+
+            d=body(self)
+            c=db()
+            campaign=c.execute(
+                "SELECT * FROM campaigns WHERE id=? AND tenant_id=?",
+                (cid,u["tenant_id"])
+            ).fetchone()
+
+            if not campaign:
+                c.close()
+                return response(self,404,{"detail":"Campaign not found"})
+
+            name=str(d.get("name",campaign["name"])).strip()
+            status=str(d.get("status",campaign["status"])).strip().lower()
+
+            if not name:
+                c.close()
+                return response(self,400,{"detail":"name is required"})
+
+            if status not in {"draft","active","paused"}:
+                c.close()
+                return response(self,400,{"detail":"Invalid campaign status"})
+
+            c.execute(
+                "UPDATE campaigns SET name=?,status=? WHERE id=? AND tenant_id=?",
+                (name,status,cid,u["tenant_id"])
+            )
+            c.commit()
+            c.close()
+            return response(self,200,{"message":"Campaign updated","id":cid})
+
+        if p.startswith("/api/posts/"):
+            try:
+                pid=int(p.rsplit("/",1)[1])
+            except ValueError:
+                return response(self,400,{"detail":"Invalid post id"})
+
+            d=body(self)
+            c=db()
+            post=c.execute(
+                "SELECT * FROM posts WHERE id=? AND tenant_id=?",
+                (pid,u["tenant_id"])
+            ).fetchone()
+
+            if not post:
+                c.close()
+                return response(self,404,{"detail":"Post not found"})
+
+            content=d.get("content",post["content"])
+            status=str(d.get("status",post["status"])).strip().lower()
+            scheduled_at=d.get("scheduled_at",post["scheduled_at"])
+
+            if not str(content).strip():
+                c.close()
+                return response(self,400,{"detail":"content is required"})
+
+            if status not in {"draft","ready"}:
+                c.close()
+                return response(self,400,{"detail":"Invalid post status"})
+
+            c.execute("""
+            UPDATE posts
+            SET content=?,status=?,scheduled_at=?
+            WHERE id=? AND tenant_id=?
+            """,(str(content).strip(),status,scheduled_at,pid,u["tenant_id"]))
+            c.commit()
+            c.close()
+            return response(self,200,{"message":"Post updated","id":pid})
+
 
         if not p.startswith("/api/admin/users/"):
             return response(self,404,{"detail":"Not found"})
@@ -366,55 +461,30 @@ class API(BaseHTTPRequestHandler):
 
         return response(self,200,{"message":"User updated","id":user_id})
 
-    def do_PUT(self):
-        p=urlparse(self.path).path
-        u=require(self)
-        if not u:return
-
-        if p.startswith("/api/posts/"):
-            try:
-                pid=int(p.rsplit("/",1)[1])
-            except ValueError:
-                return response(self,400,{"detail":"Invalid post id"})
-
-            d=body(self)
-            c=db()
-            post=c.execute(
-                "SELECT * FROM posts WHERE id=? AND tenant_id=?",
-                (pid,u["tenant_id"])
-            ).fetchone()
-
-            if not post:
-                c.close()
-                return response(self,404,{"detail":"Post not found"})
-
-            content=d.get("content",post["content"])
-            status=str(d.get("status",post["status"])).strip().lower()
-            scheduled_at=d.get("scheduled_at",post["scheduled_at"])
-
-            if not str(content).strip():
-                c.close()
-                return response(self,400,{"detail":"content is required"})
-
-            if status not in {"draft","ready"}:
-                c.close()
-                return response(self,400,{"detail":"Invalid post status"})
-
-            c.execute("""
-            UPDATE posts
-            SET content=?,status=?,scheduled_at=?
-            WHERE id=? AND tenant_id=?
-            """,(str(content).strip(),status,scheduled_at,pid,u["tenant_id"]))
-            c.commit()
-            c.close()
-            return response(self,200,{"message":"Post updated","id":pid})
-
-        return super().do_PUT()
-
     def do_DELETE(self):
         p=urlparse(self.path).path
         u=require(self)
         if not u:return
+
+        if p.startswith("/api/campaigns/"):
+            try:
+                cid=int(p.rsplit("/",1)[1])
+            except ValueError:
+                return response(self,400,{"detail":"Invalid campaign id"})
+
+            c=db()
+            cur=c.execute(
+                "DELETE FROM campaigns WHERE id=? AND tenant_id=?",
+                (cid,u["tenant_id"])
+            )
+            c.commit()
+            deleted=cur.rowcount
+            c.close()
+
+            if not deleted:
+                return response(self,404,{"detail":"Campaign not found"})
+
+            return response(self,200,{"message":"Campaign deleted","id":cid})
 
         if p.startswith("/api/posts/"):
             try:
@@ -543,6 +613,28 @@ class API(BaseHTTPRequestHandler):
 
         d=body(self)
         c=db()
+
+        if p=="/api/campaigns":
+            name=str(d.get("name","")).strip()
+            status=str(d.get("status","draft")).strip().lower()
+
+            if not name:
+                c.close()
+                return response(self,400,{"detail":"name is required"})
+
+            if status not in {"draft","active","paused"}:
+                c.close()
+                return response(self,400,{"detail":"Invalid campaign status"})
+
+            cur=c.execute(
+                "INSERT INTO campaigns (tenant_id,name,status) VALUES (?,?,?)",
+                (u["tenant_id"],name,status)
+            )
+            c.commit()
+            cid=cur.lastrowid
+            c.close()
+
+            return response(self,201,{"message":"Campaign created","id":cid})
 
         if p=="/api/posts":
             content=str(d.get("content","")).strip()
