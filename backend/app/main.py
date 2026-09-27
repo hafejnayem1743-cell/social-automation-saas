@@ -70,6 +70,21 @@ def hash_password(password,salt=None):
     dk=hashlib.pbkdf2_hmac("sha256",password.encode(),salt,200000)
     return salt.hex()+"$"+dk.hex()
 
+LOGIN_ATTEMPTS = {}
+LOGIN_LOCK = threading.Lock()
+MAX_LOGIN_ATTEMPTS = 5
+LOGIN_WINDOW = 300
+LOGIN_BLOCK = 600
+
+ROLE_PERMISSIONS = {
+    "owner": {"connectors_manage", "scheduler_manage"},
+    "admin": {"connectors_manage", "scheduler_manage"},
+    "member": {"scheduler_manage"},
+}
+
+def has_permission(user, permission):
+    return permission in ROLE_PERMISSIONS.get(user["role"], set())
+
 def verify(password,stored):
     try:
         s,h=stored.split("$",1)
@@ -165,11 +180,20 @@ def worker():
                         WHERE id=?
                         """,(now(),j["id"]))
                     else:
-                        c.execute("""
-                        UPDATE scheduled_jobs
-                        SET status='failed',last_error=?,updated_at=?
-                        WHERE id=?
-                        """,(result.error or "publish_failed",now(),j["id"]))
+                        if result.retryable and j["attempts"] < 3:
+                            delay = 30 * (2 ** (j["attempts"] - 1))
+                            retry_at = (datetime.utcnow() + timedelta(seconds=delay)).strftime("%Y-%m-%d %H:%M:%S")
+                            c.execute("""
+                            UPDATE scheduled_jobs
+                            SET status='pending',scheduled_at=?,last_error=?,updated_at=?
+                            WHERE id=?
+                            """,(retry_at,result.error or "publish_retry",now(),j["id"]))
+                        else:
+                            c.execute("""
+                            UPDATE scheduled_jobs
+                            SET status='failed',last_error=?,updated_at=?
+                            WHERE id=?
+                            """,(result.error or "publish_failed",now(),j["id"]))
 
                 except Exception as e:
                     c.execute("""
@@ -214,6 +238,28 @@ class API(BaseHTTPRequestHandler):
             c.close()
             return response(self,200,{"user":data})
 
+        if p=="/api/admin/users":
+            if not has_permission(u,"connectors_manage"):
+                c.close()
+                return response(self,403,{"detail":"Insufficient permissions"})
+
+            rows=c.execute("""
+            SELECT id,email,role,is_active,created_at
+            FROM users
+            WHERE tenant_id=?
+            ORDER BY id DESC
+            """,(u["tenant_id"],)).fetchall()
+            c.close()
+            return response(self,200,{"users":[dict(x) for x in rows]})
+
+        if p=="/api/posts":
+            rows=c.execute("""
+            SELECT id,tenant_id,content,status,scheduled_at,created_at
+            FROM posts WHERE tenant_id=? ORDER BY id DESC
+            """,(u["tenant_id"],)).fetchall()
+            c.close()
+            return response(self,200,{"posts":[dict(x) for x in rows]})
+
         if p=="/api/oauth/connectors":
             rows=c.execute("""
             SELECT id,platform,account_name,platform_user_id,
@@ -250,16 +296,224 @@ class API(BaseHTTPRequestHandler):
         c.close()
         return response(self,404,{"detail":"Not found"})
 
+    def do_PUT(self):
+        p=urlparse(self.path).path
+        u=require(self)
+        if not u:return
+
+        if not p.startswith("/api/admin/users/"):
+            return response(self,404,{"detail":"Not found"})
+
+        if not has_permission(u,"connectors_manage"):
+            return response(self,403,{"detail":"Insufficient permissions"})
+
+        try:
+            user_id=int(p.rsplit("/",1)[1])
+        except ValueError:
+            return response(self,400,{"detail":"Invalid user id"})
+
+        d=body(self)
+        c=db()
+
+        target=c.execute("""
+        SELECT id,tenant_id,email,role,is_active
+        FROM users WHERE id=? AND tenant_id=?
+        """,(user_id,u["tenant_id"])).fetchone()
+
+        if not target:
+            c.close()
+            return response(self,404,{"detail":"User not found"})
+
+        if target["id"]==u["id"]:
+            c.close()
+            return response(self,400,{"detail":"Cannot modify yourself"})
+
+        active=d.get("is_active")
+        role=d.get("role")
+
+        if active is not None and not isinstance(active,bool):
+            c.close()
+            return response(self,400,{"detail":"is_active must be boolean"})
+
+        if role is not None and role not in ("admin","member"):
+            c.close()
+            return response(self,400,{"detail":"Invalid role"})
+
+        sets=[]
+        values=[]
+
+        if active is not None:
+            sets.append("is_active=?")
+            values.append(1 if active else 0)
+
+        if role is not None:
+            sets.append("role=?")
+            values.append(role)
+
+        if not sets:
+            c.close()
+            return response(self,400,{"detail":"Nothing to update"})
+
+        values.append(user_id)
+        values.append(u["tenant_id"])
+
+        c.execute(
+            f"UPDATE users SET {','.join(sets)} WHERE id=? AND tenant_id=?",
+            values
+        )
+        c.commit()
+        c.close()
+
+        return response(self,200,{"message":"User updated","id":user_id})
+
+    def do_PUT(self):
+        p=urlparse(self.path).path
+        u=require(self)
+        if not u:return
+
+        if p.startswith("/api/posts/"):
+            try:
+                pid=int(p.rsplit("/",1)[1])
+            except ValueError:
+                return response(self,400,{"detail":"Invalid post id"})
+
+            d=body(self)
+            c=db()
+            post=c.execute(
+                "SELECT * FROM posts WHERE id=? AND tenant_id=?",
+                (pid,u["tenant_id"])
+            ).fetchone()
+
+            if not post:
+                c.close()
+                return response(self,404,{"detail":"Post not found"})
+
+            content=d.get("content",post["content"])
+            status=str(d.get("status",post["status"])).strip().lower()
+            scheduled_at=d.get("scheduled_at",post["scheduled_at"])
+
+            if not str(content).strip():
+                c.close()
+                return response(self,400,{"detail":"content is required"})
+
+            if status not in {"draft","ready"}:
+                c.close()
+                return response(self,400,{"detail":"Invalid post status"})
+
+            c.execute("""
+            UPDATE posts
+            SET content=?,status=?,scheduled_at=?
+            WHERE id=? AND tenant_id=?
+            """,(str(content).strip(),status,scheduled_at,pid,u["tenant_id"]))
+            c.commit()
+            c.close()
+            return response(self,200,{"message":"Post updated","id":pid})
+
+        return super().do_PUT()
+
+    def do_DELETE(self):
+        p=urlparse(self.path).path
+        u=require(self)
+        if not u:return
+
+        if p.startswith("/api/posts/"):
+            try:
+                pid=int(p.rsplit("/",1)[1])
+            except ValueError:
+                return response(self,400,{"detail":"Invalid post id"})
+
+            c=db()
+            cur=c.execute(
+                "DELETE FROM posts WHERE id=? AND tenant_id=?",
+                (pid,u["tenant_id"])
+            )
+            c.commit()
+            deleted=cur.rowcount
+            c.close()
+
+            if not deleted:
+                return response(self,404,{"detail":"Post not found"})
+
+            return response(self,200,{"message":"Post deleted","id":pid})
+
+        return response(self,404,{"detail":"Not found"})
+
     def do_POST(self):
         p=urlparse(self.path).path
 
+        if p=="/api/auth/register":
+            d=body(self)
+            email=str(d.get("email","")).strip().lower()
+            password=str(d.get("password",""))
+
+            if not email or "@" not in email:
+                return response(self,400,{"detail":"Valid email is required"})
+
+            if len(password)<8:
+                return response(self,400,{"detail":"Password must be at least 8 characters"})
+
+            c=db()
+
+            if c.execute("SELECT id FROM users WHERE email=?",(email,)).fetchone():
+                c.close()
+                return response(self,409,{"detail":"Email already registered"})
+
+            t=now()
+            cur=c.execute(
+                "INSERT INTO tenants(name,created_at) VALUES(?,?)",
+                (email,t)
+            )
+            tenant_id=cur.lastrowid
+
+            cur=c.execute("""
+            INSERT INTO users
+            (tenant_id,email,password_hash,role,created_at,is_active)
+            VALUES(?,?,?,?,?,1)
+            """,(
+                tenant_id,email,hash_password(password),"owner",t
+            ))
+            user_id=cur.lastrowid
+            c.commit()
+            c.close()
+
+            return response(self,201,{
+                "message":"Registration successful",
+                "user":{
+                    "id":user_id,
+                    "email":email,
+                    "role":"owner",
+                    "tenant_id":tenant_id
+                }
+            })
+
         if p=="/api/auth/login":
             d=body(self)
+            client_ip=self.client_address[0]
+            now_ts=time.time()
+
+            with LOGIN_LOCK:
+                record=LOGIN_ATTEMPTS.get(client_ip)
+                if record and record.get("blocked_until",0)>now_ts:
+                    return response(self,429,{"detail":"Too many login attempts. Try again later."})
+
             c=db()
             u=c.execute("SELECT * FROM users WHERE email=?",(d.get("email",""),)).fetchone()
-            if not u or not u["is_active"] or not verify(d.get("password",""),u["password_hash"]):
+            valid=bool(u and u["is_active"] and verify(d.get("password",""),u["password_hash"]))
+
+            if not valid:
                 c.close()
+                with LOGIN_LOCK:
+                    record=LOGIN_ATTEMPTS.get(client_ip,{"count":0,"first":now_ts,"blocked_until":0})
+                    if now_ts-record["first"]>LOGIN_WINDOW:
+                        record={"count":0,"first":now_ts,"blocked_until":0}
+                    record["count"]+=1
+                    if record["count"]>=MAX_LOGIN_ATTEMPTS:
+                        record["blocked_until"]=now_ts+LOGIN_BLOCK
+                    LOGIN_ATTEMPTS[client_ip]=record
                 return response(self,401,{"detail":"Invalid credentials"})
+
+            c.execute("DELETE FROM sessions WHERE user_id=? AND expires_at<=datetime('now')",(u["id"],))
+            token=secrets.token_urlsafe(32)
 
             token=secrets.token_urlsafe(32)
             exp=(datetime.utcnow()+timedelta(days=SESSION_DAYS)).strftime("%Y-%m-%d %H:%M:%S")
@@ -267,6 +521,10 @@ class API(BaseHTTPRequestHandler):
                       (token,u["id"],now(),exp))
             c.commit()
             c.close()
+
+            with LOGIN_LOCK:
+                LOGIN_ATTEMPTS.pop(client_ip,None)
+
             return response(self,200,{"message":"Login successful","token":token,"expires_at":exp,
                 "user":{"id":u["id"],"email":u["email"],"role":u["role"],"tenant_id":u["tenant_id"]}})
 
@@ -286,8 +544,31 @@ class API(BaseHTTPRequestHandler):
         d=body(self)
         c=db()
 
+        if p=="/api/posts":
+            content=str(d.get("content","")).strip()
+            status=str(d.get("status","draft")).strip().lower()
+            scheduled_at=d.get("scheduled_at")
+
+            if not content:
+                c.close()
+                return response(self,400,{"detail":"content is required"})
+
+            if status not in {"draft","ready"}:
+                c.close()
+                return response(self,400,{"detail":"Invalid post status"})
+
+            t=now()
+            cur=c.execute("""
+            INSERT INTO posts(tenant_id,content,status,scheduled_at,created_at)
+            VALUES(?,?,?,?,?)
+            """,(u["tenant_id"],content,status,scheduled_at,t))
+            c.commit()
+            pid=cur.lastrowid
+            c.close()
+            return response(self,201,{"message":"Post created","id":pid})
+
         if p=="/api/oauth/connectors":
-            if u["role"] not in ("owner","admin"):
+            if not has_permission(u,"connectors_manage"):
                 c.close()
                 return response(self,403,{"detail":"Insufficient permissions"})
 
@@ -297,6 +578,11 @@ class API(BaseHTTPRequestHandler):
             if not platform or not account:
                 c.close()
                 return response(self,400,{"detail":"platform and account_name are required"})
+
+            allowed_platforms={"telegram","wordpress","website"}
+            if platform not in allowed_platforms:
+                c.close()
+                return response(self,400,{"detail":"Unsupported platform"})
 
             t=now()
             cur=c.execute("""
@@ -318,7 +604,7 @@ class API(BaseHTTPRequestHandler):
             return response(self,201,{"message":"OAuth connector saved","id":cid})
 
         if p=="/api/scheduler/jobs":
-            if u["role"] not in ("owner","admin","member"):
+            if not has_permission(u,"scheduler_manage"):
                 c.close()
                 return response(self,403,{"detail":"Insufficient permissions"})
 
@@ -326,6 +612,16 @@ class API(BaseHTTPRequestHandler):
             if not scheduled:
                 c.close()
                 return response(self,400,{"detail":"scheduled_at is required"})
+
+            post_id=d.get("post_id")
+            if post_id is not None:
+                r=c.execute("""
+                SELECT id FROM posts
+                WHERE id=? AND tenant_id=?
+                """,(post_id,u["tenant_id"])).fetchone()
+                if not r:
+                    c.close()
+                    return response(self,400,{"detail":"Invalid post"})
 
             connector_id=d.get("connector_id")
             if connector_id is not None:
@@ -343,7 +639,7 @@ class API(BaseHTTPRequestHandler):
             (tenant_id,user_id,post_id,connector_id,scheduled_at,status,created_at,updated_at)
             VALUES(?,?,?,?,?,'pending',?,?)
             """,(
-                u["tenant_id"],u["id"],d.get("post_id"),
+                u["tenant_id"],u["id"],post_id,
                 connector_id,scheduled,t,t
             ))
             c.commit()
@@ -399,16 +695,6 @@ except Exception as e:
     print("UNIVERSAL CONNECTOR RUNTIME ERROR:", e)
 
 
-# ==================== UNIVERSAL CONNECTOR RUNTIME ====================
-try:
-    from app.universal_connectors import PLATFORMS, platform_status, CONNECTOR_REGISTRY
-    from app.publishing_engine import publish, get_publisher, PUBLISHERS
-    from app.official_publishers import OFFICIAL_PUBLISHERS
-    PUBLISHERS.update(OFFICIAL_PUBLISHERS)
-    print("UNIVERSAL CONNECTOR RUNTIME: LOADED")
-except Exception as e:
-    print("UNIVERSAL CONNECTOR RUNTIME ERROR:", e)
-
 def main():
     init_db()
     threading.Thread(target=worker,daemon=True).start()
@@ -427,101 +713,3 @@ print("V0.6.1 CONNECTOR LAYER LOADED")
 
 if __name__=="__main__":
     main()
-
-# V0.6.1 CONNECTOR EXECUTION FOUNDATION
-# Official API adapters only. No scraping/browser automation.
-
-class ConnectorResult:
-    def __init__(self, ok, status, message, external_id=None):
-        self.ok = ok
-        self.status = status
-        self.message = message
-        self.external_id = external_id
-
-class BaseConnector:
-    platform = "unknown"
-
-    def publish(self, account, content):
-        raise NotImplementedError
-
-class FacebookConnector(BaseConnector):
-    platform = "facebook"
-
-    def publish(self, account, content):
-        return ConnectorResult(
-            False,
-            "not_configured",
-            "Facebook official API credentials are not configured"
-        )
-
-class InstagramConnector(BaseConnector):
-    platform = "instagram"
-
-    def publish(self, account, content):
-        return ConnectorResult(
-            False,
-            "not_configured",
-            "Instagram official API credentials are not configured"
-        )
-
-class TelegramConnector(BaseConnector):
-    platform = "telegram"
-
-    def publish(self, account, content):
-        return ConnectorResult(
-            False,
-            "not_configured",
-            "Telegram Bot API credentials are not configured"
-        )
-
-CONNECTOR_REGISTRY = {
-    "facebook": FacebookConnector(),
-    "instagram": InstagramConnector(),
-    "telegram": TelegramConnector(),
-}
-
-def get_connector(platform):
-    return CONNECTOR_REGISTRY.get(platform)
-
-print("V0.6.1 CONNECTOR LAYER LOADED")
-
-
-
-# ==================== V0.7.1 OAUTH ROUTES ====================
-
-import os
-import secrets
-from urllib.parse import urlparse
-
-OAUTH_CLIENTS = {
-    "facebook": {
-        "client_id": os.getenv("META_CLIENT_ID", ""),
-        "client_secret": os.getenv("META_CLIENT_SECRET", ""),
-        "redirect_uri": os.getenv("META_REDIRECT_URI", "http://127.0.0.1:8000/api/oauth/callback/facebook"),
-    },
-    "instagram": {
-        "client_id": os.getenv("META_CLIENT_ID", ""),
-        "client_secret": os.getenv("META_CLIENT_SECRET", ""),
-        "redirect_uri": os.getenv("META_REDIRECT_URI", "http://127.0.0.1:8000/api/oauth/callback/instagram"),
-    },
-}
-
-def create_oauth_state():
-    return secrets.token_urlsafe(32)
-
-print("V0.7.1 OAUTH ROUTE FOUNDATION LOADED")
-
-
-try:
-    from app.universal_connectors import PLATFORMS, platform_status, CONNECTOR_REGISTRY
-    print("UNIVERSAL PLATFORM ENGINE LOADED")
-except Exception as e:
-    print("UNIVERSAL PLATFORM ENGINE ERROR:", e)
-
-
-try:
-    from app.publishing_engine import publish, get_publisher, PUBLISHERS
-    print("UNIVERSAL PUBLISHING ENGINE LOADED")
-except Exception as e:
-    print("PUBLISHING ENGINE ERROR:", e)
-
