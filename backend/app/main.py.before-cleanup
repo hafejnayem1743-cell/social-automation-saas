@@ -106,84 +106,31 @@ def worker():
         try:
             c=db()
             jobs=c.execute("""
-            SELECT
-                j.*,
-                o.platform,
-                o.account_name,
-                o.platform_user_id,
-                o.access_token,
-                o.refresh_token,
-                o.token_expires_at,
-                o.status AS connector_status,
-                p.content AS post_content
-            FROM scheduled_jobs j
-            JOIN oauth_connectors o ON o.id=j.connector_id
-                AND o.tenant_id=j.tenant_id
-            LEFT JOIN posts p ON p.id=j.post_id
-                AND p.tenant_id=j.tenant_id
-            WHERE j.status='pending'
-            AND datetime(j.scheduled_at)<=datetime('now')
-            AND o.status='connected'
-            ORDER BY j.id
-            LIMIT 20
+            SELECT * FROM scheduled_jobs
+            WHERE status='pending'
+            AND datetime(scheduled_at)<=datetime('now')
+            ORDER BY id LIMIT 20
             """).fetchall()
 
             for j in jobs:
-                claimed=c.execute("""
+                c.execute("""
                 UPDATE scheduled_jobs
                 SET status='processing',attempts=attempts+1,updated_at=?
                 WHERE id=? AND status='pending'
                 """,(now(),j["id"]))
 
-                if claimed.rowcount != 1:
-                    continue
-
-                try:
-                    account={
-                        "id": j["connector_id"],
-                        "platform": j["platform"],
-                        "account_name": j["account_name"],
-                        "platform_user_id": j["platform_user_id"],
-                        "access_token": j["access_token"],
-                        "refresh_token": j["refresh_token"],
-                        "token_expires_at": j["token_expires_at"],
-                    }
-
-                    if not j["post_content"]:
-                        raise ValueError("post_content_missing")
-
-                    result=publish(
-                        j["platform"],
-                        account,
-                        j["post_content"]
-                    )
-
-                    if result.ok:
-                        c.execute("""
-                        UPDATE scheduled_jobs
-                        SET status='published',last_error=NULL,updated_at=?
-                        WHERE id=?
-                        """,(now(),j["id"]))
-                    else:
-                        c.execute("""
-                        UPDATE scheduled_jobs
-                        SET status='failed',last_error=?,updated_at=?
-                        WHERE id=?
-                        """,(result.error or "publish_failed",now(),j["id"]))
-
-                except Exception as e:
-                    c.execute("""
-                    UPDATE scheduled_jobs
-                    SET status='failed',last_error=?,updated_at=?
-                    WHERE id=?
-                    """,(str(e)[:500],now(),j["id"]))
+                # Connector publishing will be plugged in here.
+                # No fake platform API calls are made.
+                c.execute("""
+                UPDATE scheduled_jobs
+                SET status='ready_for_connector',updated_at=?
+                WHERE id=?
+                """,(now(),j["id"]))
 
             c.commit()
             c.close()
-
         except Exception:
             pass
-
         time.sleep(WORKER_INTERVAL)
 
 class API(BaseHTTPRequestHandler):
