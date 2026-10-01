@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Reset password · NBSA</title>
+<link rel="stylesheet" href="./cyber.css">
+<link rel="stylesheet" href="./auth.css">
+</head>
+<body class="authPage">
+<div class="authShell">
+
+  <section class="authVisual">
+    <div class="logoMark">NB</div>
+    <h2 class="brandTitle">SECURE <span>PASSWORD RESET</span></h2>
+    <p class="brandSub">Use the one-time recovery token to choose a new workspace password.</p>
+
+    <div class="terminal">
+      <div class="terminalTop">
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        <span class="terminalTitle">nbsa-reset</span>
+      </div>
+      <div class="terminalBody">
+        <div class="tGreen">[CHECK] token validity</div>
+        <div class="tGreen">[CHECK] token expiry</div>
+        <div class="tGreen">[CHECK] session invalidation</div>
+        <div class="tCyan">[AUTH] apply new password...</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="authForm">
+    <div class="formInner">
+      <div class="eyebrow">PASSWORD RESET</div>
+      <h1>Choose a new password</h1>
+      <p class="desc">Create a new secure password for your NBSA account.</p>
+
+      <div id="message" class="message"></div>
+
+      <form id="resetForm">
+        <div class="field">
+          <label for="token">Reset token</label>
+          <input class="authInput" id="token" type="text" autocomplete="off" placeholder="Recovery token" required>
+        </div>
+
+        <div class="field">
+          <label for="password">New password</label>
+          <div class="inputWrap">
+            <input class="authInput" id="password" type="password" autocomplete="new-password" placeholder="At least 8 characters" required>
+            <button class="showBtn" type="button" data-password-toggle="password">Show</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="confirmPassword">Confirm password</label>
+          <div class="inputWrap">
+            <input class="authInput" id="confirmPassword" type="password" autocomplete="new-password" placeholder="Repeat your password" required>
+            <button class="showBtn" type="button" data-password-toggle="confirmPassword">Show</button>
+          </div>
+        </div>
+
+        <button class="primaryBtn" id="submitBtn" type="submit">Reset password</button>
+      </form>
+
+      <div class="links">
+        <a href="./login.html">Back to sign in</a>
+      </div>
+
+      <div class="apiState">
+        <span class="apiDot" id="apiDot"></span>
+        <span id="apiText">Checking API...</span>
+      </div>
+    </div>
+  </section>
+
+</div>
+<script src="./auth.js"></script>
+</body>
+</html>

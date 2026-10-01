@@ -1,40 +1,98 @@
 :root{
-  --nb-bg:#020609;
-  --nb-panel:#071116;
-  --nb-panel2:#0a171d;
-  --nb-line:#17333d;
-  --nb-cyan:#36e8ff;
-  --nb-green:#43ff9d;
-  --nb-text:#d8f8ff;
-  --nb-muted:#78939e;
-  --nb-red:#ff6687;
-  --nb-yellow:#ffd968;
+  --nb-bg:#020606;
+  --nb-panel:#061012;
+  --nb-panel2:#08171a;
+  --nb-line:#15373a;
+  --nb-green:#31ff91;
+  --nb-green2:#11c978;
+  --nb-cyan:#39eaff;
+  --nb-text:#ddfff0;
+  --nb-muted:#789a91;
+  --nb-red:#ff6385;
+  --nb-yellow:#ffd96b;
 }
-*{box-sizing:border-box}
-html,body{margin:0;min-height:100%;background:var(--nb-bg);color:var(--nb-text)}
+*,
+*::before,
+*::after{box-sizing:border-box}
+
+html,body{
+  margin:0;
+  min-height:100%;
+  background:var(--nb-bg);
+  color:var(--nb-text);
+}
+
 body{
-  background-image:
-    linear-gradient(rgba(54,232,255,.028) 1px,transparent 1px),
-    linear-gradient(90deg,rgba(54,232,255,.028) 1px,transparent 1px);
-  background-size:32px 32px;
+  position:relative;
+  overflow-x:hidden;
+  font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  text-transform:none !important;
+  letter-spacing:normal !important;
+  background:
+    radial-gradient(circle at 15% 15%,rgba(49,255,145,.055),transparent 28%),
+    radial-gradient(circle at 85% 75%,rgba(17,201,120,.045),transparent 30%),
+    #020606;
 }
+
 body::before{
   content:"";
   position:fixed;
   inset:0;
+  z-index:-3;
   pointer-events:none;
-  background:repeating-linear-gradient(
-    to bottom,
-    transparent 0,
-    transparent 3px,
-    rgba(255,255,255,.012) 4px
-  );
-  z-index:999;
+  background-image:
+    linear-gradient(rgba(49,255,145,.045) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(49,255,145,.045) 1px,transparent 1px);
+  background-size:30px 30px;
+  animation:nbGrid 18s linear infinite;
 }
-button,input,textarea,select{font:inherit}
-input,textarea,select{
+
+body::after{
+  content:"";
+  position:fixed;
+  inset:-30%;
+  z-index:-2;
+  pointer-events:none;
+  background:
+    radial-gradient(circle at 35% 35%,rgba(49,255,145,.09),transparent 18%),
+    radial-gradient(circle at 70% 65%,rgba(49,255,145,.06),transparent 20%);
+  filter:blur(35px);
+  animation:nbGlow 9s ease-in-out infinite alternate;
+}
+
+body>*{position:relative}
+
+@keyframes nbGrid{
+  from{transform:translate3d(0,0,0)}
+  to{transform:translate3d(30px,30px,0)}
+}
+@keyframes nbGlow{
+  from{transform:translate3d(-2%, -1%,0) scale(1)}
+  to{transform:translate3d(2%, 2%,0) scale(1.07)}
+}
+
+button,input,textarea,select{
+  font:inherit;
   text-transform:none !important;
   letter-spacing:normal !important;
 }
-button{text-transform:none !important}
-::placeholder{text-transform:none !important}
+
+input,
+textarea,
+select{
+  color:var(--nb-text);
+}
+
+input::placeholder,
+textarea::placeholder{
+  color:#58756e;
+  text-transform:none !important;
+}
+
+button{cursor:pointer}
+a{text-transform:none !important}
+
+::selection{
+  background:rgba(49,255,145,.25);
+  color:#fff;
+}

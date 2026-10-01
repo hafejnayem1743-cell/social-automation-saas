@@ -1,7 +1,6 @@
 <!doctype html>
 <html lang="en">
 <head>
-<link rel="stylesheet" href="./cyber.css">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>NAYEM BOSS SOCIAL AUTOMATION</title>
@@ -176,48 +175,6 @@ pre{
  .submitBar{align-items:stretch;flex-direction:column}
 }
 </style>
-
-<style id="nbsa-live-cyber">
-body{
-  position:relative;
-  background:#020606 !important;
-}
-body::before{
-  content:"";
-  position:fixed;
-  inset:0;
-  z-index:-3;
-  pointer-events:none;
-  background-image:
-    linear-gradient(rgba(49,255,145,.035) 1px,transparent 1px),
-    linear-gradient(90deg,rgba(49,255,145,.035) 1px,transparent 1px);
-  background-size:30px 30px;
-  animation:nbsaGridMove 18s linear infinite;
-}
-body::after{
-  content:"";
-  position:fixed;
-  width:55vw;
-  height:55vw;
-  left:-18vw;
-  top:-18vw;
-  z-index:-2;
-  pointer-events:none;
-  border-radius:50%;
-  background:rgba(49,255,145,.06);
-  filter:blur(70px);
-  animation:nbsaGlowMove 9s ease-in-out infinite alternate;
-}
-@keyframes nbsaGridMove{
-  from{transform:translate(0,0)}
-  to{transform:translate(30px,30px)}
-}
-@keyframes nbsaGlowMove{
-  from{transform:translate(0,0) scale(.95)}
-  to{transform:translate(80px,55px) scale(1.08)}
-}
-</style>
-
 </head>
 <body>
 <div id="root"></div>
@@ -246,7 +203,6 @@ const S={
  jobs:[],
  targets:[],
  automations:[],
- oauthProviders:{},
  users:[],
  status:null,
  settings:JSON.parse(localStorage.getItem("nbsa_settings")||"{}")
@@ -286,7 +242,7 @@ async function api(path,opt={}){
  const data=await res.json().catch(()=>({}));
  if(res.status===401){
   localStorage.removeItem("nbsa_token");
-  location.href="./login.html";
+  location.href="/login.html";
   throw new Error("Authentication required");
  }
  if(!res.ok){
@@ -731,63 +687,32 @@ function automationsView(){
 function accountsView(){
  const rows=PLATFORMS.map(([k,n])=>{
   const c=S.connectors.filter(x=>x.platform===k);
-  const connected=c.filter(x=>x.status==="connected");
-  const provider=S.oauthProviders[k]||{};
-  const configured=!!provider.configured;
-  const telegram=k==="telegram";
-
-  let action="";
-
-  if(connected.length){
-   action=`<span class="status ok">CONNECTED</span>`;
-  }else if(!configured){
-   action=`<span class="status warn">SETUP REQUIRED</span>`;
-  }else if(telegram){
-   action=`<button class="btn primary connectTelegram" data-platform="telegram">CONNECT BOT</button>`;
-  }else{
-   action=`<button class="btn primary connectOAuth" data-platform="${k}">CONNECT OAUTH</button>`;
-  }
-
+  const connected=c.filter(x=>x.status==="connected").length;
   return `<tr>
    <td><b>${n}</b></td>
-   <td>${connected.length}</td>
-   <td>${c.map(x=>`
-     <div style="margin-bottom:5px">
-      <b>${esc(x.account_name||"")}</b>
-      <span class="muted"> · ${esc(x.platform_user_id||"")}</span>
-     </div>
-    `).join("")||"<span class='muted'>No account connected</span>"}</td>
-   <td>${action}</td>
+   <td>${connected}</td>
+   <td>${c.map(x=>`${esc(x.account_name||"")} [${esc(x.status||"")}]`).join("<br>")||"<span class='muted'>Not connected</span>"}</td>
+   <td><span class="status ${connected?"ok":"warn"}">${connected?"CONNECTED":"NOT CONNECTED"}</span></td>
   </tr>`;
  }).join("");
 
  return shell(`
   <div class="panel">
    <div class="sectionTitle">
-    <div>
-     <h2>Social Accounts</h2>
-     <div class="muted">Official account connections. Access tokens are never entered in this UI.</div>
-    </div>
-    <span class="badge">8 PLATFORMS</span>
+    <div><h2>Social Accounts</h2><div class="muted">Official connections only. No manual access-token form.</div></div>
    </div>
-
-   <div class="note">
-    Connect buttons redirect to the platform's official authorization page.
-    Successful authorization creates the server-side connector automatically.
-   </div>
+   <div class="note">A platform must have a real connected account before targets can be created or automation jobs can publish through that platform.</div>
   </div>
 
   <div class="panel">
    <div class="tableWrap">
     <table>
-     <thead>
-      <tr><th>Platform</th><th>Connected</th><th>Accounts</th><th>Connection</th></tr>
-     </thead>
+     <thead><tr><th>Platform</th><th>Connected</th><th>Accounts</th><th>Status</th></tr></thead>
      <tbody>${rows}</tbody>
     </table>
    </div>
   </div>
- `,"Social Accounts","Official OAuth / Telegram Bot connections");
+ `,"Social Accounts","OAuth / official connector status");
 }
 
 function schedulerView(){
@@ -1025,61 +950,17 @@ function bind(){
  $("#logoutBtn")?.addEventListener("click",async()=>{
   try{await api("/api/auth/logout",{method:"POST"})}catch(_){}
   localStorage.removeItem("nbsa_token");
-  location.href="./login.html";
+  location.href="/login.html";
  });
 
  if(S.view==="posts")bindPosts();
  if(S.view==="targets")bindTargets();
  if(S.view==="automations")bindAutomations();
- if(S.view==="accounts")bindAccounts();
  if(S.view==="scheduler"){
   $("#refreshScheduler")?.addEventListener("click",async()=>{await loadAll();render()});
  }
  if(S.view==="campaigns")bindCampaigns();
  if(S.view==="settings")bindSettings();
-}
-
-function bindAccounts(){
- $$(".connectOAuth").forEach(b=>{
-  b.addEventListener("click",async()=>{
-   const platform=b.dataset.platform;
-   try{
-    const result=await api("/api/oauth/start/"+encodeURIComponent(platform));
-    if(!result.url)throw new Error("OAuth URL was not returned");
-    location.href=result.url;
-   }catch(e){
-    toast(e.message,false);
-   }
-  });
- });
-
- $$(".connectTelegram").forEach(b=>{
-  b.addEventListener("click",async()=>{
-   try{
-    const result=await api("/api/telegram/connect",{method:"POST",body:"{}"});
-    await loadAll();
-    render();
-    toast("Telegram Bot connected: "+(result.account_name||"Bot"));
-   }catch(e){
-    toast(e.message,false);
-   }
-  });
- });
-
- const qp=new URLSearchParams(location.search);
- const oauth=qp.get("oauth");
- const platform=qp.get("platform");
- const reason=qp.get("reason");
-
- if(oauth==="success"){
-  history.replaceState({},document.title,"/dashboard.html");
-  toast((platform||"Platform")+" connected successfully");
- }
-
- if(oauth==="error"){
-  history.replaceState({},document.title,"/dashboard.html");
-  toast("Connection failed: "+(reason||"OAuth failed"),false);
- }
 }
 
 function bindPosts(){
@@ -1321,8 +1202,7 @@ async function loadAll(){
   api("/api/scheduler/jobs"),
   api("/api/status"),
   api("/api/targets"),
-  api("/api/automations"),
-  api("/api/oauth/providers")
+  api("/api/automations")
  ]);
 
  S.me=results[0].user;
@@ -1333,7 +1213,6 @@ async function loadAll(){
  S.status=results[5];
  S.targets=results[6].targets||[];
  S.automations=results[7].automations||[];
- S.oauthProviders=results[8].providers||{};
 
  if(S.me.role==="owner"||S.me.role==="admin"){
   try{
@@ -1346,7 +1225,7 @@ async function loadAll(){
 (async function init(){
  const token=localStorage.getItem("nbsa_token");
  if(!token){
-  location.href="./login.html";
+  location.href="/login.html";
   return;
  }
 
