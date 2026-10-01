@@ -1,4 +1,87 @@
-<!doctype html><html><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Register · NBSA</title><link rel="stylesheet" href="./auth.css"><link rel="stylesheet" href="./cyber.css"></head><body>
-<script type="module" src="./auth.js"></script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Create account · NBSA</title>
+<link rel="stylesheet" href="./cyber.css">
+<link rel="stylesheet" href="./auth.css">
+</head>
+<body class="authPage">
+<div class="authShell">
+
+  <section class="authVisual">
+    <div class="logoMark">NB</div>
+    <h2 class="brandTitle">CREATE <span>WORKSPACE ACCESS</span></h2>
+    <p class="brandSub">Create your tenant account and manage authorized social automation from one control center.</p>
+
+    <div class="terminal">
+      <div class="terminalTop">
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        <span class="terminalTitle">nbsa-provisioning</span>
+      </div>
+      <div class="terminalBody">
+        <div class="tGreen">[READY] identity registration</div>
+        <div class="tGreen">[READY] tenant isolation</div>
+        <div class="tGreen">[READY] scheduler permissions</div>
+        <div class="tCyan">[AUTH] create a secure account...</div>
+      </div>
+    </div>
+
+    <div class="featureGrid">
+      <div class="feature"><b>Private Workspace</b><span>Tenant-scoped resources</span></div>
+      <div class="feature"><b>Targets</b><span>Reusable destination mapping</span></div>
+      <div class="feature"><b>Automations</b><span>Publish and schedule jobs</span></div>
+      <div class="feature"><b>Recovery</b><span>One-time password reset</span></div>
+    </div>
+  </section>
+
+  <section class="authForm">
+    <div class="formInner">
+      <div class="eyebrow">ACCOUNT PROVISIONING</div>
+      <h1>Create account</h1>
+      <p class="desc">Set up your NBSA workspace access.</p>
+
+      <div id="message" class="message"></div>
+
+      <form id="registerForm">
+        <div class="field">
+          <label for="email">Email</label>
+          <input class="authInput" id="email" type="email" autocomplete="email" placeholder="you@example.com" required>
+        </div>
+
+        <div class="field">
+          <label for="password">Password</label>
+          <div class="inputWrap">
+            <input class="authInput" id="password" type="password" autocomplete="new-password" placeholder="At least 8 characters" required>
+            <button class="showBtn" type="button" data-password-toggle="password">Show</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="confirmPassword">Confirm password</label>
+          <div class="inputWrap">
+            <input class="authInput" id="confirmPassword" type="password" autocomplete="new-password" placeholder="Repeat your password" required>
+            <button class="showBtn" type="button" data-password-toggle="confirmPassword">Show</button>
+          </div>
+        </div>
+
+        <button class="primaryBtn" id="submitBtn" type="submit">Create account</button>
+      </form>
+
+      <div class="links">
+        <a href="./login.html">Already have an account?</a>
+        <a href="./forgot.html">Forgot password?</a>
+      </div>
+
+      <div class="apiState">
+        <span class="apiDot" id="apiDot"></span>
+        <span id="apiText">Checking API...</span>
+      </div>
+    </div>
+  </section>
+
+</div>
+<script src="./auth.js"></script>
+</body>
+</html>

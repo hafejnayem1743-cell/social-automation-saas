@@ -1,193 +1,312 @@
-const API="http://127.0.0.1:8000";
+(function(){
+  "use strict";
 
-const $=(s,r=document)=>r.querySelector(s);
+  const host=location.hostname;
+  const local=host==="127.0.0.1"||host==="localhost";
 
-async function api(path,opt={}){
-  const headers={...(opt.headers||{})};
-  if(opt.body)headers["Content-Type"]="application/json";
-  const r=await fetch(API+path,{...opt,headers});
-  const text=await r.text();
-  let d={};
-  try{d=text?JSON.parse(text):{}}catch{d={detail:text||"Invalid response"}}
-  if(!r.ok)throw new Error(d.detail||d.message||`HTTP ${r.status}`);
-  return d;
-}
+  // Local development uses the Python API.
+  // Production is same-origin /api so it can later sit behind a public API proxy.
+  const API_BASE=(window.NBSA_API_BASE||(
+    local ? "http://127.0.0.1:8000/api" : "/api"
+  )).replace(/\/$/,"");
 
-function show(id,msg){
-  const x=$("#"+id);if(x)x.textContent=msg;
-}
+  function $(id){return document.getElementById(id)}
 
-function togglePassword(id,btn){
-  const x=$("#"+id);
-  if(!x)return;
-  x.type=x.type==="password"?"text":"password";
-  btn.textContent=x.type==="password"?"Show":"Hide";
-}
-
-function authShell(title,sub,form,links){
- return `<div class="auth-shell"><div class="auth-card">
- <div class="brand">
-   <div class="mark">NB</div>
-   <div class="brand-text"><strong>NBSA</strong><span>SOCIAL AUTOMATION</span></div>
- </div>
- <h1>${title}</h1><p class="sub">${sub}</p>
- ${form}${links}
- </div></div>`;
-}
-
-const passwordField=(name,id,label)=>`
-<div class="field"><label>${label}</label>
- <div class="input-wrap">
-  <input id="${id}" name="${name}" type="password" required>
-  <button type="button" class="show" onclick="togglePassword('${id}',this)">Show</button>
- </div>
-</div>`;
-
-function loginPage(){
- document.body.innerHTML=authShell(
- "Welcome back",
- "Sign in to your NBSA workspace.",
- `<form id="loginForm">
-    <div class="field"><label>Email</label><input name="email" type="email" required autocomplete="email" placeholder="you@example.com"></div>
-    ${passwordField("password","loginPassword","Password")}
-    <button class="main-btn">Sign in</button>
-    <p id="error" class="error"></p>
-  </form>
-  <div class="links">
-    <a href="/forgot.html">Forgot password?</a>
-    <a href="/register.html">Create account</a>
-  </div>`,
- ""
- );
-
- $("#loginForm").addEventListener("submit",async e=>{
-  e.preventDefault();show("error","");
-  try{
-   const f=new FormData(e.target);
-   const d=await api("/api/auth/login",{
-    method:"POST",
-    body:JSON.stringify({email:f.get("email"),password:f.get("password")})
-   });
-   localStorage.setItem("nbsa_token",d.token);
-   location.href="/dashboard.html";
-  }catch(x){show("error",x.message)}
- });
-}
-
-function registerPage(){
- document.body.innerHTML=authShell(
- "Create your workspace",
- "Start your social automation workspace.",
- `<form id="registerForm">
-    <div class="field"><label>Email</label><input name="email" type="email" required autocomplete="email" placeholder="you@example.com"></div>
-    ${passwordField("password","registerPassword","Password")}
-    ${passwordField("confirm","confirmPassword","Confirm password")}
-    <div class="notice">Use at least 8 characters. Your password is stored as a hash on the server.</div>
-    <button class="main-btn">Create account</button>
-    <p id="error" class="error"></p>
-  </form>
-  <div class="links">
-    <a href="/login.html">Already have an account?</a>
-  </div>`,
- ""
- );
-
- $("#registerForm").addEventListener("submit",async e=>{
-  e.preventDefault();show("error","");
-  const f=new FormData(e.target);
-  if(f.get("password")!==f.get("confirm")){
-   show("error","Passwords do not match.");return;
+  function showMessage(message,type="error"){
+    const box=$("message");
+    if(!box)return;
+    box.textContent=message;
+    box.className="message show "+(type==="success"?"success":"error");
   }
-  try{
-   await api("/api/auth/register",{
-    method:"POST",
-    body:JSON.stringify({email:f.get("email"),password:f.get("password")})
-   });
-   location.href="/login.html?registered=1";
-  }catch(x){show("error",x.message)}
- });
-}
 
-function forgotPage(){
- document.body.innerHTML=authShell(
- "Forgot your password?",
- "Enter your account email and generate a secure reset link.",
- `<form id="forgotForm">
-    <div class="field"><label>Email</label><input name="email" type="email" required autocomplete="email" placeholder="you@example.com"></div>
-    <button class="main-btn">Generate reset link</button>
-    <p id="message" class="success"></p>
-    <p id="error" class="error"></p>
-  </form>
-  <div class="links"><a href="/login.html">Back to login</a><a href="/register.html">Create account</a></div>`,
- ""
- );
-
- $("#forgotForm").addEventListener("submit",async e=>{
-  e.preventDefault();show("error","");show("message","");
-  try{
-   const f=new FormData(e.target);
-   const d=await api("/api/auth/forgot-password",{
-    method:"POST",body:JSON.stringify({email:f.get("email")})
-   });
-   show("message",d.message||"Reset request processed.");
-
-   if(d.reset_link){
-    $("#message").insertAdjacentHTML("afterend",
-      `<div class="notice"><b>Free-first local reset link</b><br>
-      <span class="reset-link">${d.reset_link}</span><br><br>
-      <button type="button" class="secondary" id="openReset">Open reset page</button></div>`
-    );
-    $("#openReset").onclick=()=>location.href=d.reset_link;
-   }
-  }catch(x){show("error",x.message)}
- });
-}
-
-function resetPage(){
- const token=new URLSearchParams(location.search).get("token")||"";
-
- document.body.innerHTML=authShell(
- "Set a new password",
- "Choose a new password for your NBSA account.",
- `<form id="resetForm">
-    <div class="notice">${token?"Reset token detected. It expires in 30 minutes and can be used once.":"Reset token is missing."}</div>
-    ${passwordField("password","newPassword","New password")}
-    ${passwordField("confirm","newConfirm","Confirm password")}
-    <button class="main-btn" ${token?"":"disabled"}>Reset password</button>
-    <p id="message" class="success"></p>
-    <p id="error" class="error"></p>
-  </form>
-  <div class="links"><a href="/login.html">Back to login</a></div>`,
- ""
- );
-
- $("#resetForm").addEventListener("submit",async e=>{
-  e.preventDefault();show("error","");show("message","");
-  if(!token){show("error","Invalid or missing reset token.");return}
-  const f=new FormData(e.target);
-  if(f.get("password")!==f.get("confirm")){
-   show("error","Passwords do not match.");return;
+  function clearMessage(){
+    const box=$("message");
+    if(!box)return;
+    box.textContent="";
+    box.className="message";
   }
-  try{
-   const d=await api("/api/auth/reset-password",{
-    method:"POST",
-    body:JSON.stringify({token,password:f.get("password")})
-   });
-   show("message",d.message||"Password reset successful.");
-   setTimeout(()=>location.href="/login.html?reset=1",900);
-  }catch(x){show("error",x.message)}
- });
-}
 
-window.togglePassword=togglePassword;
+  async function api(path,options){
+    let res;
 
-const page=location.pathname.split("/").pop();
-if(page==="register.html")registerPage();
-else if(page==="forgot.html")forgotPage();
-else if(page==="reset.html")resetPage();
-else{
- loginPage();
- const q=new URLSearchParams(location.search);
- if(q.get("registered"))show("error","Account created. Please sign in.");
- if(q.get("reset"))show("error","Password changed. Please sign in.");
-}
+    try{
+      res=await fetch(API_BASE+path,Object.assign({
+        headers:{"Content-Type":"application/json"}
+      },options||{}));
+    }catch(_){
+      throw new Error(
+        local
+          ? "Local backend is offline. Start the NBSA backend and try again."
+          : "NBSA API is not connected to this live website yet."
+      );
+    }
+
+    const data=await res.json().catch(()=>({}));
+
+    if(!res.ok){
+      throw new Error(
+        data.detail||
+        data.error||
+        data.message||
+        "Request failed"
+      );
+    }
+
+    return data;
+  }
+
+  function setupPasswords(){
+    document.querySelectorAll("[data-password-toggle]").forEach(btn=>{
+      btn.addEventListener("click",()=>{
+        const id=btn.getAttribute("data-password-toggle");
+        const input=$(id);
+        if(!input)return;
+
+        const isPassword=input.type==="password";
+        input.type=isPassword?"text":"password";
+        btn.textContent=isPassword?"Hide":"Show";
+      });
+    });
+  }
+
+  async function checkApi(){
+    const dot=$("apiDot");
+    const text=$("apiText");
+    if(!dot||!text)return;
+
+    try{
+      let base=API_BASE;
+      let url;
+
+      if(base.endsWith("/api")){
+        url=base.slice(0,-4)+"/health";
+      }else{
+        url=base+"/health";
+      }
+
+      const res=await fetch(url,{cache:"no-store"});
+
+      if(res.ok){
+        dot.className="apiDot online";
+        text.textContent="API online";
+      }else{
+        dot.className="apiDot offline";
+        text.textContent="API unavailable";
+      }
+    }catch(_){
+      dot.className="apiDot offline";
+      text.textContent=local
+        ?"Local API offline"
+        :"Live API not connected";
+    }
+  }
+
+  function go(path){
+    location.href=path;
+  }
+
+  async function login(){
+    const form=$("loginForm");
+    if(!form)return;
+
+    form.addEventListener("submit",async e=>{
+      e.preventDefault();
+      clearMessage();
+
+      const email=$("email").value.trim();
+      const password=$("password").value;
+
+      if(!email||!password){
+        showMessage("Enter your email and password.");
+        return;
+      }
+
+      const btn=$("submitBtn");
+      btn.disabled=true;
+      btn.textContent="Signing in...";
+
+      try{
+        const data=await api("/auth/login",{
+          method:"POST",
+          body:JSON.stringify({email,password})
+        });
+
+        const token=data.token||data.access_token;
+
+        if(!token){
+          throw new Error("Login succeeded but no session token was returned.");
+        }
+
+        localStorage.setItem("nbsa_token",token);
+        showMessage("Login successful. Opening dashboard...","success");
+
+        setTimeout(()=>go("./dashboard.html"),250);
+      }catch(err){
+        showMessage(err.message);
+      }finally{
+        btn.disabled=false;
+        btn.textContent="Sign in";
+      }
+    });
+  }
+
+  async function register(){
+    const form=$("registerForm");
+    if(!form)return;
+
+    form.addEventListener("submit",async e=>{
+      e.preventDefault();
+      clearMessage();
+
+      const email=$("email").value.trim();
+      const password=$("password").value;
+      const confirm=$("confirmPassword").value;
+
+      if(!email||!password||!confirm){
+        showMessage("Complete all required fields.");
+        return;
+      }
+
+      if(password.length<8){
+        showMessage("Password must be at least 8 characters.");
+        return;
+      }
+
+      if(password!==confirm){
+        showMessage("Passwords do not match.");
+        return;
+      }
+
+      const btn=$("submitBtn");
+      btn.disabled=true;
+      btn.textContent="Creating account...";
+
+      try{
+        await api("/auth/register",{
+          method:"POST",
+          body:JSON.stringify({email,password})
+        });
+
+        showMessage(
+          "Account created successfully. Redirecting to sign in...",
+          "success"
+        );
+
+        setTimeout(()=>go("./login.html"),600);
+      }catch(err){
+        showMessage(err.message);
+      }finally{
+        btn.disabled=false;
+        btn.textContent="Create account";
+      }
+    });
+  }
+
+  async function forgot(){
+    const form=$("forgotForm");
+    if(!form)return;
+
+    form.addEventListener("submit",async e=>{
+      e.preventDefault();
+      clearMessage();
+
+      const email=$("email").value.trim();
+
+      if(!email){
+        showMessage("Enter your account email.");
+        return;
+      }
+
+      const btn=$("submitBtn");
+      btn.disabled=true;
+      btn.textContent="Sending...";
+
+      try{
+        const data=await api("/auth/forgot-password",{
+          method:"POST",
+          body:JSON.stringify({email})
+        });
+
+        showMessage(
+          data.reset_link
+            ? "Reset link created. Opening reset page..."
+            : (data.message||"If the account exists, reset instructions were created."),
+          "success"
+        );
+
+        if(data.reset_link){
+          setTimeout(()=>go(data.reset_link),500);
+        }
+      }catch(err){
+        showMessage(err.message);
+      }finally{
+        btn.disabled=false;
+        btn.textContent="Send reset link";
+      }
+    });
+  }
+
+  async function reset(){
+    const form=$("resetForm");
+    if(!form)return;
+
+    const urlToken=new URLSearchParams(location.search).get("token");
+    if(urlToken&&$("token"))$("token").value=urlToken;
+
+    form.addEventListener("submit",async e=>{
+      e.preventDefault();
+      clearMessage();
+
+      const token=$("token").value.trim();
+      const password=$("password").value;
+      const confirm=$("confirmPassword").value;
+
+      if(!token||!password||!confirm){
+        showMessage("Complete all required fields.");
+        return;
+      }
+
+      if(password.length<8){
+        showMessage("Password must be at least 8 characters.");
+        return;
+      }
+
+      if(password!==confirm){
+        showMessage("Passwords do not match.");
+        return;
+      }
+
+      const btn=$("submitBtn");
+      btn.disabled=true;
+      btn.textContent="Resetting...";
+
+      try{
+        await api("/auth/reset-password",{
+          method:"POST",
+          body:JSON.stringify({token,password})
+        });
+
+        localStorage.removeItem("nbsa_token");
+
+        showMessage(
+          "Password reset successful. Redirecting to sign in...",
+          "success"
+        );
+
+        setTimeout(()=>go("./login.html"),700);
+      }catch(err){
+        showMessage(err.message);
+      }finally{
+        btn.disabled=false;
+        btn.textContent="Reset password";
+      }
+    });
+  }
+
+  setupPasswords();
+  login();
+  register();
+  forgot();
+  reset();
+  checkApi();
+})();
