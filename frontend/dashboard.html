@@ -243,7 +243,7 @@ async function api(path,opt={}){
  const data=await res.json().catch(()=>({}));
  if(res.status===401){
   localStorage.removeItem("nbsa_token");
-  location.href="/login.html";
+  location.href="./login.html";
   throw new Error("Authentication required");
  }
  if(!res.ok){
@@ -982,7 +982,7 @@ function bind(){
  $("#logoutBtn")?.addEventListener("click",async()=>{
   try{await api("/api/auth/logout",{method:"POST"})}catch(_){}
   localStorage.removeItem("nbsa_token");
-  location.href="/login.html";
+  location.href="./login.html";
  });
 
  if(S.view==="posts")bindPosts();
@@ -1303,7 +1303,7 @@ async function loadAll(){
 (async function init(){
  const token=localStorage.getItem("nbsa_token");
  if(!token){
-  location.href="/login.html";
+  location.href="./login.html";
   return;
  }
 
