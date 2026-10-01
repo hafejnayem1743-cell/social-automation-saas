@@ -8,7 +8,7 @@
     {
       "binding": "DB",
       "database_name": "nbsa-production",
-      "database_id": "REPLACE_AFTER_D1_CREATE"
+      "database_id": "8d799df6-b410-4153-9222-68b657d2a523"
     }
   ],
   "r2_buckets": [
