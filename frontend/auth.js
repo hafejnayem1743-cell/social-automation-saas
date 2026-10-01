@@ -209,8 +209,7 @@
           "success"
         );
 
-/* NBSA shared-password mode: legacy auth redirect disabled */
-      }catch(err){
+}catch(err){
         showMessage(err.message);
       }finally{
         if(btn){
@@ -330,8 +329,7 @@
           "success"
         );
 
-/* NBSA shared-password mode: legacy auth redirect disabled */
-      }catch(err){
+}catch(err){
         showMessage(err.message);
       }finally{
         if(btn){

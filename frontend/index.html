@@ -119,9 +119,7 @@ form.onsubmit = (e) => {
   const value = pw.value;
 
   if (value === ADMIN_PASSWORD) {
-    sessionStorage.setItem("nbsa_access_role","admin");
-    localStorage.setItem("nbsa_access_role","admin");
-    sessionStorage.setItem("nbsa_access","1");
+sessionStorage.setItem("nbsa_access","1");
     localStorage.setItem("nbsa_access","1");
     msg.className = "msg ok";
     msg.textContent = "ACCESS GRANTED // ADMIN";
@@ -130,9 +128,7 @@ form.onsubmit = (e) => {
   }
 
   if (value === USER_PASSWORD) {
-    sessionStorage.setItem("nbsa_access_role","user");
-    localStorage.setItem("nbsa_access_role","user");
-    sessionStorage.setItem("nbsa_access","1");
+sessionStorage.setItem("nbsa_access","1");
     localStorage.setItem("nbsa_access","1");
     msg.className = "msg ok";
     msg.textContent = "ACCESS GRANTED // USER";

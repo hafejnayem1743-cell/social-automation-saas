@@ -217,10 +217,7 @@ body::after{
   to{transform:translate(80px,55px) scale(1.08)}
 }
 </style>
-
-  
-  
-<script src="./dashboard-guard.js?v=20261001"></script></head>
+</head>
 <body>
 <div id="root"></div>
 <div id="toast" class="toast"></div>
@@ -288,8 +285,7 @@ async function api(path,opt={}){
  const data=await res.json().catch(()=>({}));
  if(res.status===401){
   localStorage.removeItem("nbsa_token");
-/* NBSA shared-password mode: legacy auth redirect disabled */
-  throw new Error("Authentication required");
+throw new Error("Authentication required");
  }
  if(!res.ok){
   throw new Error(data.detail||data.error||data.message||("HTTP "+res.status));
@@ -1027,8 +1023,7 @@ function bind(){
  $("#logoutBtn")?.addEventListener("click",async()=>{
   try{await api("/api/auth/logout",{method:"POST"})}catch(_){}
   localStorage.removeItem("nbsa_token");
-/* NBSA shared-password mode: legacy auth redirect disabled */
- });
+});
 
  if(S.view==="posts")bindPosts();
  if(S.view==="targets")bindTargets();
@@ -1348,8 +1343,7 @@ async function loadAll(){
 (async function init(){
  const token=localStorage.getItem("nbsa_token");
  if(!token){
-/* NBSA shared-password mode: legacy auth redirect disabled */
-  return;
+return;
  }
 
  try{
