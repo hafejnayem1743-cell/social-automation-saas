@@ -11,12 +11,6 @@
       "database_id": "8d799df6-b410-4153-9222-68b657d2a523"
     }
   ],
-  "r2_buckets": [
-    {
-      "binding": "MEDIA",
-      "bucket_name": "nbsa-media"
-    }
-  ],
   "triggers": {
     "crons": [
       "*/1 * * * *"
