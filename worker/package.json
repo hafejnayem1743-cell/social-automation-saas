@@ -1,0 +1,13 @@
+{
+  "name": "nbsa-production-api",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "preview": "wrangler dev"
+  },
+  "devDependencies": {
+    "wrangler": "4.145.0",
+    "@cloudflare/workers-types": "^4.20260920.0"
+  }
+}
