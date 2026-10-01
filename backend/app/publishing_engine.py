@@ -71,18 +71,8 @@ def publish(platform, account, content, media=None):
 
 try:
     from app.official_publishers import OFFICIAL_PUBLISHERS
+except ModuleNotFoundError:
+    from official_publishers import OFFICIAL_PUBLISHERS
 
-    PUBLISHERS.update(OFFICIAL_PUBLISHERS)
-
-    print("OFFICIAL PUBLISHERS CONNECTED")
-except Exception as e:
-    print("OFFICIAL PUBLISHER LOAD ERROR:", e)
-
-try:
-    from app.official_publishers import OFFICIAL_PUBLISHERS
-
-    PUBLISHERS.update(OFFICIAL_PUBLISHERS)
-
-    print("OFFICIAL PUBLISHERS CONNECTED")
-except Exception as e:
-    print("OFFICIAL PUBLISHER LOAD ERROR:", e)
+PUBLISHERS.update(OFFICIAL_PUBLISHERS)
+print("OFFICIAL PUBLISHERS CONNECTED")

@@ -1,0 +1,1326 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NAYEM BOSS SOCIAL AUTOMATION</title>
+<style>
+:root{
+ --bg:#03070b;
+ --panel:#07131d;
+ --panel2:#091923;
+ --line:#173241;
+ --text:#d8f7ff;
+ --muted:#7894a0;
+ --cyan:#35ecff;
+ --green:#37ff9a;
+ --red:#ff5577;
+ --yellow:#ffd45c;
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif}
+body{
+ background-image:
+ linear-gradient(rgba(53,236,255,.035) 1px,transparent 1px),
+ linear-gradient(90deg,rgba(53,236,255,.035) 1px,transparent 1px);
+ background-size:28px 28px;
+}
+button,input,textarea,select{font:inherit}
+button{cursor:pointer}
+.app{display:grid;grid-template-columns:245px 1fr;min-height:100vh}
+.sidebar{
+ position:sticky;top:0;height:100vh;overflow:auto;
+ background:linear-gradient(180deg,#041019,#02080c);
+ border-right:1px solid var(--line);padding:16px 12px
+}
+.brand{padding:8px 10px 17px;border-bottom:1px solid var(--line);margin-bottom:12px}
+.brand strong{display:block;color:var(--cyan);font-size:15px;letter-spacing:.8px}
+.brand span{display:block;margin-top:5px;color:var(--muted);font-size:11px}
+.nav{display:grid;gap:5px}
+.nav button{
+ width:100%;text-align:left;border:1px solid transparent;background:transparent;
+ color:#93acb8;padding:11px 12px;border-radius:9px
+}
+.nav button:hover{border-color:var(--line);background:#081720;color:#dffaff}
+.nav button.active{border-color:#1f5663;background:#0a2028;color:var(--cyan);box-shadow:inset 3px 0 0 var(--cyan)}
+.sideBottom{margin-top:16px;padding-top:12px;border-top:1px solid var(--line);display:grid;gap:8px}
+.main{min-width:0;padding:20px}
+.topbar{
+ display:flex;justify-content:space-between;gap:12px;align-items:center;
+ border-bottom:1px solid var(--line);padding-bottom:15px;margin-bottom:18px
+}
+.topbar h1{font-size:20px;margin:0}
+.topbar small{color:var(--muted)}
+.topActions{display:flex;gap:8px}
+.btn{
+ border:1px solid var(--line);background:#071721;color:#cfeef4;
+ border-radius:9px;padding:9px 12px
+}
+.btn:hover{border-color:#2a6977}
+.btn.primary{background:#0a2730;border-color:#1c8f9f;color:var(--cyan)}
+.btn.success{background:#08251b;border-color:#1d9b6a;color:var(--green)}
+.btn.danger{background:#2b0c15;border-color:#8b2a43;color:#ff8ca3}
+.btn.ghost{background:transparent}
+.btn.full{width:100%}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.card{
+ background:linear-gradient(180deg,var(--panel),#051019);
+ border:1px solid var(--line);border-radius:13px;padding:15px
+}
+.metric{font-size:27px;font-weight:800;color:var(--cyan);margin-top:5px}
+.label{color:var(--muted);font-size:12px}
+.sectionTitle{display:flex;justify-content:space-between;gap:10px;align-items:center;margin:0 0 12px}
+.sectionTitle h2,.sectionTitle h3{margin:0}
+.panel{
+ background:linear-gradient(180deg,var(--panel),#051018);
+ border:1px solid var(--line);border-radius:13px;padding:16px;margin-bottom:14px
+}
+.stack{display:grid;gap:12px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.three{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+label.small{display:block;color:var(--muted);font-size:12px;margin-bottom:6px}
+input,textarea,select{
+ width:100%;border:1px solid var(--line);background:#041018;color:var(--text);
+ border-radius:9px;padding:11px 12px;outline:none
+}
+input:focus,textarea:focus,select:focus{border-color:#2c8594;box-shadow:0 0 0 2px rgba(53,236,255,.08)}
+textarea{min-height:145px;resize:vertical}
+.muted{color:var(--muted)}
+.note{
+ border-left:3px solid var(--cyan);padding:10px 12px;background:#07151d;color:#9eb7c0;border-radius:7px;
+ font-size:13px
+}
+.composerStep{
+ border:1px solid var(--line);border-radius:12px;padding:15px;background:#06111a
+}
+.stepHead{display:flex;align-items:center;gap:9px;margin-bottom:12px}
+.stepNo{color:var(--cyan);font-weight:900;font-family:ui-monospace,monospace}
+.stepHead h3{margin:0}
+.platformGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}
+.platform{
+ display:flex;align-items:center;gap:9px;padding:12px;border:1px solid var(--line);
+ border-radius:9px;background:#07141d
+}
+.platform input{width:auto}
+.platform strong{font-size:13px}
+.targetGroup{border:1px solid var(--line);border-radius:10px;margin-top:10px;overflow:hidden}
+.targetGroupHead{
+ padding:10px 12px;background:#081923;border-bottom:1px solid var(--line);
+ display:flex;justify-content:space-between;gap:8px;align-items:center
+}
+.targetList{padding:9px;display:grid;gap:7px}
+.targetItem{
+ display:flex;align-items:center;gap:9px;padding:9px;border:1px solid #122b36;border-radius:8px;background:#061119
+}
+.targetItem input{width:auto}
+.targetMeta{min-width:0}
+.targetMeta b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.targetMeta span{display:block;color:var(--muted);font-size:11px;margin-top:2px}
+.actionGrid{display:flex;flex-wrap:wrap;gap:9px}
+.actionChoice{position:relative}
+.actionChoice input{position:absolute;opacity:0;pointer-events:none}
+.actionChoice span{
+ display:block;padding:11px 14px;border:1px solid var(--line);border-radius:9px;background:#061119
+}
+.actionChoice input:checked + span{border-color:#248a99;color:var(--cyan);background:#0a2028}
+.modeGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+.modeCard{
+ position:relative;border:1px solid var(--line);border-radius:9px;padding:12px;background:#061119
+}
+.modeCard input{width:auto;margin-right:7px}
+.submitBar{
+ display:flex;justify-content:space-between;align-items:center;gap:12px;
+ border-top:1px solid var(--line);padding-top:14px
+}
+.preview{
+ max-width:330px;max-height:240px;border:1px solid var(--line);
+ border-radius:11px;display:block;margin-top:9px
+}
+.tableWrap{overflow:auto}
+table{width:100%;border-collapse:collapse;min-width:720px}
+th,td{padding:10px;border-bottom:1px solid #102732;text-align:left;font-size:12px;vertical-align:top}
+th{color:var(--muted);font-weight:700}
+.badge{
+ display:inline-flex;align-items:center;padding:4px 8px;border:1px solid var(--line);
+ border-radius:999px;font-size:11px
+}
+.status{display:inline-block;padding:4px 8px;border-radius:999px;border:1px solid var(--line);font-size:11px}
+.ok{color:var(--green);border-color:#1e6d51;background:#082019}
+.warn{color:var(--yellow);border-color:#6c5b1b;background:#221e08}
+.fail{color:var(--red);border-color:#70273a;background:#260b13}
+.empty{padding:25px;color:var(--muted);text-align:center}
+.toast{
+ position:fixed;right:16px;bottom:16px;z-index:50;
+ background:#06151d;border:1px solid #1c6070;color:var(--text);
+ padding:11px 13px;border-radius:9px;max-width:360px;display:none
+}
+.toast.show{display:block}
+pre{
+ white-space:pre-wrap;word-break:break-word;background:#02090d;border:1px solid var(--line);
+ border-radius:8px;padding:12px;color:#9cecff;font-size:11px
+}
+.smallRow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.right{margin-left:auto}
+@media(max-width:1000px){
+ .app{grid-template-columns:205px 1fr}
+ .grid4{grid-template-columns:repeat(2,1fr)}
+ .platformGrid{grid-template-columns:repeat(2,1fr)}
+}
+@media(max-width:700px){
+ .app{display:block}
+ .sidebar{position:relative;height:auto;border-right:0;border-bottom:1px solid var(--line)}
+ .main{padding:12px}
+ .two,.three,.grid4,.modeGrid{grid-template-columns:1fr}
+ .platformGrid{grid-template-columns:1fr 1fr}
+ .submitBar{align-items:stretch;flex-direction:column}
+}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<div id="toast" class="toast"></div>
+
+<script>
+const API="http://127.0.0.1:8000";
+
+const PLATFORMS=[
+ ["facebook","Facebook"],
+ ["instagram","Instagram"],
+ ["telegram","Telegram"],
+ ["x","X"],
+ ["youtube","YouTube"],
+ ["tiktok","TikTok"],
+ ["pinterest","Pinterest"],
+ ["reddit","Reddit"]
+];
+
+const S={
+ view:"overview",
+ me:null,
+ posts:[],
+ campaigns:[],
+ connectors:[],
+ jobs:[],
+ targets:[],
+ automations:[],
+ oauthProviders:{},
+ users:[],
+ status:null,
+ settings:JSON.parse(localStorage.getItem("nbsa_settings")||"{}")
+};
+
+const $=(q,r=document)=>r.querySelector(q);
+const $$=(q,r=document)=>Array.from(r.querySelectorAll(q));
+
+function esc(v){
+ return String(v??"").replace(/[&<>"']/g,m=>({
+  "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+ }[m]));
+}
+
+function toast(msg,ok=true){
+ const el=$("#toast");
+ el.textContent=msg;
+ el.style.borderColor=ok?"#1c6070":"#8b2a43";
+ el.style.color=ok?"var(--text)":"#ff9aae";
+ el.classList.add("show");
+ clearTimeout(window.__toastTimer);
+ window.__toastTimer=setTimeout(()=>el.classList.remove("show"),3200);
+}
+
+async function api(path,opt={}){
+ const token=localStorage.getItem("nbsa_token");
+ const headers=Object.assign({"Content-Type":"application/json"},opt.headers||{});
+ if(token)headers.Authorization="Bearer "+token;
+
+ let res;
+ try{
+  res=await fetch(API+path,Object.assign({},opt,{headers}));
+ }catch(e){
+  throw new Error("Backend connection failed. Start NBSA backend first.");
+ }
+
+ const data=await res.json().catch(()=>({}));
+ if(res.status===401){
+  localStorage.removeItem("nbsa_token");
+  location.href="/login.html";
+  throw new Error("Authentication required");
+ }
+ if(!res.ok){
+  throw new Error(data.detail||data.error||data.message||("HTTP "+res.status));
+ }
+ return data;
+}
+
+function navButton(view,label){
+ return `<button class="${S.view===view?"active":""}" data-nav="${view}">${label}</button>`;
+}
+
+function shell(body,title,sub){
+ return `
+ <div class="app">
+  <aside class="sidebar">
+   <div class="brand">
+    <strong>NAYEM BOSS SOCIAL AUTOMATION</strong>
+    <span>OFFICIAL API / MULTI-TENANT CONTROL</span>
+   </div>
+
+   <div class="nav">
+    ${navButton("overview","Overview")}
+    ${navButton("posts","New Post")}
+    ${navButton("campaigns","Campaigns")}
+    ${navButton("accounts","Social Accounts")}
+    ${navButton("targets","Targets")}
+    ${navButton("automations","Automations")}
+    ${navButton("scheduler","Scheduler")}
+    ${navButton("analytics","Analytics")}
+    ${navButton("notifications","Notifications")}
+    ${navButton("settings","Settings")}
+    ${(S.me?.role==="owner"||S.me?.role==="admin")?navButton("admin","Admin Users"):""}
+   </div>
+
+   <div class="sideBottom">
+    <div class="smallRow">
+     <span class="badge">${esc(S.me?.role||"user")}</span>
+     <span class="muted">${esc(S.me?.email||"")}</span>
+    </div>
+    <button class="btn full" id="refreshBtn">Refresh All</button>
+    <button class="btn danger full" id="logoutBtn">Logout</button>
+   </div>
+  </aside>
+
+  <main class="main">
+   <div class="topbar">
+    <div>
+     <h1>${esc(title)}</h1>
+     <small>${esc(sub||"")}</small>
+    </div>
+    <div class="topActions">
+     <span class="badge">API ${esc(S.status?.version||"—")}</span>
+     <span class="badge">${S.status?.worker==="running"?"WORKER RUNNING":"WORKER UNKNOWN"}</span>
+    </div>
+   </div>
+   ${body}
+  </main>
+ </div>`;
+}
+
+function overviewView(){
+ return shell(`
+  <div class="grid4">
+   <div class="card"><div class="label">POSTS</div><div class="metric">${S.posts.length}</div></div>
+   <div class="card"><div class="label">TARGETS</div><div class="metric">${S.targets.length}</div></div>
+   <div class="card"><div class="label">AUTOMATIONS</div><div class="metric">${S.automations.length}</div></div>
+   <div class="card"><div class="label">PENDING JOBS</div><div class="metric">${S.status?.pending_jobs??0}</div></div>
+  </div>
+
+  <div class="panel" style="margin-top:14px">
+   <div class="sectionTitle"><h2>NBSA Automation Workflow</h2><span class="badge">REAL DATABASE FLOW</span></div>
+   <div class="three">
+    <div class="card">
+     <div class="label">01</div>
+     <h3>New Post</h3>
+     <div class="muted">Text + image, select platforms, select many targets, choose action and schedule.</div>
+     <button class="btn primary" style="margin-top:12px" data-nav="posts">Open New Post</button>
+    </div>
+    <div class="card">
+     <div class="label">02</div>
+     <h3>Targets</h3>
+     <div class="muted">Store authorized platform targets linked to connected accounts.</div>
+     <button class="btn" style="margin-top:12px" data-nav="targets">Manage Targets</button>
+    </div>
+    <div class="card">
+     <div class="label">03</div>
+     <h3>Automations</h3>
+     <div class="muted">One automation can create individual scheduled jobs for many targets.</div>
+     <button class="btn" style="margin-top:12px" data-nav="automations">Open Automations</button>
+    </div>
+   </div>
+  </div>
+
+  <div class="panel">
+   <div class="sectionTitle"><h3>Platform Matrix</h3></div>
+   <div class="tableWrap">
+    <table>
+     <thead><tr><th>Platform</th><th>Connected Accounts</th><th>Targets</th></tr></thead>
+     <tbody>
+      ${PLATFORMS.map(([k,n])=>{
+       const cc=S.connectors.filter(x=>x.platform===k);
+       const tt=S.targets.filter(x=>x.platform===k);
+       return `<tr>
+        <td><b>${n}</b></td>
+        <td>${cc.filter(x=>x.status==="connected").length}</td>
+        <td>${tt.length}</td>
+       </tr>`;
+      }).join("")}
+     </tbody>
+    </table>
+   </div>
+  </div>
+ `,"Overview","Control center for posts, targets, automations and scheduled jobs");
+}
+
+function postsView(){
+ const selectedPlatforms=new Set($$('input[name="platform"]:checked').map(x=>x.value));
+
+ const groups=PLATFORMS.map(([key,name])=>{
+  const targets=S.targets.filter(t=>t.platform===key);
+  return `
+   <div class="targetGroup platform-target-group" data-platform-group="${key}">
+    <div class="targetGroupHead">
+     <div><b>${name}</b> <span class="muted">(${targets.length} target)</span></div>
+     <label class="smallRow muted"><input type="checkbox" data-select-all="${key}" style="width:auto"> Select all</label>
+    </div>
+    <div class="targetList">
+     ${
+      targets.length
+      ? targets.map(t=>`
+       <label class="targetItem">
+        <input type="checkbox" name="target_id" value="${t.id}" data-target-platform="${key}">
+        <div class="targetMeta">
+         <b>${esc(t.target_name||t.target_input||("Target #"+t.id))}</b>
+         <span>${esc(t.target_input||"")} · ${esc(t.target_type||"destination")} · ${esc(t.status||"")}</span>
+        </div>
+       </label>`).join("")
+      : `<div class="empty">No saved ${name} target. Add one from Targets after a real account is connected.</div>`
+     }
+    </div>
+   </div>`;
+ }).join("");
+
+ return shell(`
+  <form id="composerForm">
+
+   <div class="panel">
+    <div class="sectionTitle">
+     <div>
+      <h2>New Post & Automation</h2>
+      <div class="muted">Build one post and dispatch it to many authorized targets.</div>
+     </div>
+     <span class="badge">SUBMIT ALL</span>
+    </div>
+
+    <div class="stack">
+
+     <div class="composerStep">
+      <div class="stepHead"><span class="stepNo">01</span><h3>Content</h3></div>
+      <textarea name="content" placeholder="Write your post text..."></textarea>
+
+      <div style="margin-top:11px">
+       <label class="small">Photo / Image</label>
+       <input id="mediaFile" type="file" accept="image/*">
+       <div class="muted" style="margin-top:5px">Image only · max 5 MB</div>
+       <img id="mediaPreview" class="preview" hidden alt="Preview">
+      </div>
+     </div>
+
+     <div class="composerStep">
+      <div class="stepHead"><span class="stepNo">02</span><h3>Platforms</h3></div>
+      <div class="platformGrid">
+       ${PLATFORMS.map(([k,n])=>`
+        <label class="platform">
+         <input type="checkbox" name="platform" value="${k}">
+         <strong>${n}</strong>
+        </label>
+       `).join("")}
+      </div>
+     </div>
+
+     <div class="composerStep">
+      <div class="stepHead"><span class="stepNo">03</span><h3>Targets</h3></div>
+      <div class="note">
+       Select one or many targets. Targets are always tied to an actual connected platform account.
+       Arbitrary unsolicited third-party commenting is not supported.
+      </div>
+
+      <div id="targetPicker" style="margin-top:10px">
+       ${groups}
+      </div>
+
+      <div style="margin-top:10px" class="smallRow">
+       <button type="button" class="btn" id="goTargets">+ Add / Manage Targets</button>
+       <span id="targetCount" class="badge">0 selected</span>
+      </div>
+     </div>
+
+     <div class="composerStep">
+      <div class="stepHead"><span class="stepNo">04</span><h3>Action</h3></div>
+      <div class="actionGrid">
+       <label class="actionChoice">
+        <input type="radio" name="action" value="publish" checked>
+        <span>Publish</span>
+       </label>
+       <label class="actionChoice">
+        <input type="radio" name="action" value="comment">
+        <span>Comment</span>
+       </label>
+       <label class="actionChoice">
+        <input type="radio" name="action" value="reply">
+        <span>Reply</span>
+       </label>
+      </div>
+     </div>
+
+     <div class="composerStep">
+      <div class="stepHead"><span class="stepNo">05</span><h3>Schedule</h3></div>
+
+      <div class="two">
+       <div>
+        <label class="small">Automation Name</label>
+        <input name="name" value="NBSA Automation" required>
+       </div>
+       <div>
+        <label class="small">Schedule Mode</label>
+        <select name="mode" id="scheduleMode">
+         <option value="draft">Save Draft</option>
+         <option value="now">Publish Now</option>
+         <option value="scheduled">Schedule Once</option>
+        </select>
+       </div>
+      </div>
+
+      <div id="scheduleBox" class="two" style="margin-top:10px" hidden>
+       <div>
+        <label class="small">Date & Time</label>
+        <input type="datetime-local" name="scheduled_at">
+       </div>
+       <div>
+        <label class="small">Recurring Rule</label>
+        <select name="recurring_rule">
+         <option value="">One time</option>
+         <option value="HOURLY">Hourly</option>
+         <option value="DAILY">Daily</option>
+         <option value="WEEKLY">Weekly</option>
+        </select>
+       </div>
+      </div>
+
+      <div class="note" style="margin-top:10px">
+       "Publish Now" creates a real scheduled job for the current time. The server worker performs the actual publish attempt.
+      </div>
+     </div>
+
+     <div class="submitBar">
+      <div>
+       <div class="muted">Ready to submit?</div>
+       <div id="composerSummary">Choose platform(s) and target(s).</div>
+      </div>
+      <button class="btn primary" type="submit" id="submitAllBtn">SUBMIT ALL</button>
+     </div>
+
+     <div id="composerError" class="fail" style="display:none;padding:10px;border-radius:8px"></div>
+
+    </div>
+   </div>
+  </form>
+
+  <div class="panel">
+   <div class="sectionTitle">
+    <h3>Posts</h3>
+    <span class="badge">${S.posts.length} total</span>
+   </div>
+   <div class="tableWrap">
+    <table>
+     <thead>
+      <tr><th>ID</th><th>Content</th><th>Media</th><th>Status</th><th>Created</th><th>Action</th></tr>
+     </thead>
+     <tbody>
+      ${S.posts.length?S.posts.map(p=>`
+       <tr>
+        <td>#${p.id}</td>
+        <td>${esc(p.content||"")}</td>
+        <td>${p.media_data?"PHOTO":"-"}</td>
+        <td><span class="status">${esc(p.status||"")}</span></td>
+        <td>${esc(p.created_at||"")}</td>
+        <td><button type="button" class="btn danger deletePost" data-id="${p.id}">Delete</button></td>
+       </tr>`).join("")
+       :`<tr><td colspan="6" class="empty">No posts yet.</td></tr>`}
+     </tbody>
+    </table>
+   </div>
+  </div>
+ `,"New Post & Automation","Content → Platforms → Many Targets → Action → Schedule → Submit All");
+}
+
+function targetsView(){
+ return shell(`
+  <div class="panel">
+   <div class="sectionTitle">
+    <div><h2>Target Management</h2><div class="muted">Create reusable authorized targets for each connected account.</div></div>
+    <span class="badge">${S.targets.length} targets</span>
+   </div>
+
+   ${
+    S.connectors.length
+    ? `
+    <form id="targetForm" class="stack">
+     <div class="three">
+      <div>
+       <label class="small">Connected Account</label>
+       <select name="connector_id" required>
+        ${S.connectors.filter(c=>c.status==="connected").map(c=>`
+         <option value="${c.id}">${esc(c.account_name)} · ${esc(c.platform)}</option>
+        `).join("") || `<option value="">No connected account</option>`}
+       </select>
+      </div>
+      <div>
+       <label class="small">Target Type</label>
+       <select name="target_type">
+        <option value="destination">Destination</option>
+        <option value="page">Page</option>
+        <option value="account">Account</option>
+        <option value="channel">Channel</option>
+        <option value="group">Group</option>
+        <option value="post">Post</option>
+        <option value="video">Video</option>
+        <option value="comment">Comment</option>
+        <option value="subreddit">Subreddit</option>
+       </select>
+      </div>
+      <div>
+       <label class="small">Target Input</label>
+       <input name="target_input" placeholder="@handle / username / name / ID" required>
+      </div>
+     </div>
+
+     <div class="three">
+      <div>
+       <label class="small">Target Name</label>
+       <input name="target_name" placeholder="Display name">
+      </div>
+      <div>
+       <label class="small">Official Platform Target ID</label>
+       <input name="platform_target_id" placeholder="Resolved ID (optional)">
+      </div>
+      <div style="display:flex;align-items:end">
+       <button class="btn primary full">SAVE TARGET</button>
+      </div>
+     </div>
+    </form>`
+    : `<div class="note">No connected social account is available. This form does not accept manual access tokens. Connect a real official account first.</div>`
+   }
+  </div>
+
+  <div class="panel">
+   <div class="sectionTitle"><h3>Saved Targets</h3><button class="btn" id="refreshTargets">Refresh</button></div>
+   <div class="tableWrap">
+    <table>
+     <thead><tr><th>ID</th><th>Platform</th><th>Type</th><th>Input</th><th>Name</th><th>Platform ID</th><th>Status</th><th>Action</th></tr></thead>
+     <tbody>
+      ${S.targets.length?S.targets.map(t=>`
+       <tr>
+        <td>#${t.id}</td>
+        <td>${esc(t.platform)}</td>
+        <td>${esc(t.target_type)}</td>
+        <td>${esc(t.target_input)}</td>
+        <td>${esc(t.target_name||"")}</td>
+        <td>${esc(t.platform_target_id||"")}</td>
+        <td><span class="status">${esc(t.status||"")}</span></td>
+        <td><button class="btn danger deleteTarget" data-id="${t.id}">Delete</button></td>
+       </tr>`).join("")
+       :`<tr><td colspan="8" class="empty">No targets saved.</td></tr>`}
+     </tbody>
+    </table>
+   </div>
+  </div>
+ `,"Targets","Reusable authorized publishing/comment/reply destinations");
+}
+
+function automationsView(){
+ return shell(`
+  <div class="panel">
+   <div class="sectionTitle">
+    <div><h2>Automations</h2><div class="muted">Each automation maps a post to many individual target jobs.</div></div>
+    <span class="badge">${S.automations.length} automations</span>
+   </div>
+   <div class="note">New automations are created from <b>New Post</b>. This page is for monitoring and deletion.</div>
+  </div>
+
+  <div class="panel">
+   <div class="tableWrap">
+    <table>
+     <thead><tr><th>ID</th><th>Name</th><th>Post</th><th>Action</th><th>Schedule</th><th>Recurring</th><th>Status</th><th>Created</th><th>Action</th></tr></thead>
+     <tbody>
+      ${S.automations.length?S.automations.map(a=>`
+       <tr>
+        <td>#${a.id}</td>
+        <td>${esc(a.name||"")}</td>
+        <td>#${esc(a.post_id||"")}</td>
+        <td>${esc(a.action||"")}</td>
+        <td>${esc(a.scheduled_at||"")}</td>
+        <td>${esc(a.recurring_rule||"")}</td>
+        <td><span class="status">${esc(a.status||"")}</span></td>
+        <td>${esc(a.created_at||"")}</td>
+        <td><button class="btn danger deleteAutomation" data-id="${a.id}">Delete</button></td>
+       </tr>`).join("")
+       :`<tr><td colspan="9" class="empty">No automations yet.</td></tr>`}
+     </tbody>
+    </table>
+   </div>
+  </div>
+
+  <div class="panel">
+   <div class="sectionTitle"><h3>Scheduled Jobs</h3></div>
+   <div class="tableWrap">
+    <table>
+     <thead><tr><th>ID</th><th>Automation</th><th>Target</th><th>Platform</th><th>Action</th><th>Scheduled</th><th>Status</th><th>Attempts</th><th>Error</th></tr></thead>
+     <tbody>
+      ${S.jobs.length?S.jobs.map(j=>`
+       <tr>
+        <td>#${j.id}</td>
+        <td>${esc(j.automation_id||"")}</td>
+        <td>${esc(j.target_id||"")}</td>
+        <td>${esc(j.platform||j.connector_platform||"")}</td>
+        <td>${esc(j.action||"")}</td>
+        <td>${esc(j.scheduled_at||"")}</td>
+        <td><span class="status">${esc(j.status||"")}</span></td>
+        <td>${esc(j.attempts||0)}</td>
+        <td>${esc(j.last_error||"")}</td>
+       </tr>`).join("")
+       :`<tr><td colspan="9" class="empty">No scheduled jobs.</td></tr>`}
+     </tbody>
+    </table>
+   </div>
+  </div>
+ `,"Automations","Monitor automation records and per-target scheduler jobs");
+}
+
+function accountsView(){
+ const rows=PLATFORMS.map(([k,n])=>{
+  const c=S.connectors.filter(x=>x.platform===k);
+  const connected=c.filter(x=>x.status==="connected");
+  const provider=S.oauthProviders[k]||{};
+  const configured=!!provider.configured;
+  const telegram=k==="telegram";
+
+  let action="";
+
+  if(connected.length){
+   action=`<span class="status ok">CONNECTED</span>`;
+  }else if(!configured){
+   action=`<span class="status warn">SETUP REQUIRED</span>`;
+  }else if(telegram){
+   action=`<button class="btn primary connectTelegram" data-platform="telegram">CONNECT BOT</button>`;
+  }else{
+   action=`<button class="btn primary connectOAuth" data-platform="${k}">CONNECT OAUTH</button>`;
+  }
+
+  return `<tr>
+   <td><b>${n}</b></td>
+   <td>${connected.length}</td>
+   <td>${c.map(x=>`
+     <div style="margin-bottom:5px">
+      <b>${esc(x.account_name||"")}</b>
+      <span class="muted"> · ${esc(x.platform_user_id||"")}</span>
+     </div>
+    `).join("")||"<span class='muted'>No account connected</span>"}</td>
+   <td>${action}</td>
+  </tr>`;
+ }).join("");
+
+ return shell(`
+  <div class="panel">
+   <div class="sectionTitle">
+    <div>
+     <h2>Social Accounts</h2>
+     <div class="muted">Official account connections. Access tokens are never entered in this UI.</div>
+    </div>
+    <span class="badge">8 PLATFORMS</span>
+   </div>
+
+   <div class="note">
+    Connect buttons redirect to the platform's official authorization page.
+    Successful authorization creates the server-side connector automatically.
+   </div>
+  </div>
+
+  <div class="panel">
+   <div class="tableWrap">
+    <table>
+     <thead>
+      <tr><th>Platform</th><th>Connected</th><th>Accounts</th><th>Connection</th></tr>
+     </thead>
+     <tbody>${rows}</tbody>
+    </table>
+   </div>
+  </div>
+ `,"Social Accounts","Official OAuth / Telegram Bot connections");
+}
+
+function schedulerView(){
+ return shell(`
+  <div class="grid4">
+   <div class="card"><div class="label">WORKER</div><div class="metric" style="font-size:21px">${esc(S.status?.worker||"—")}</div></div>
+   <div class="card"><div class="label">PENDING</div><div class="metric">${S.status?.pending_jobs??0}</div></div>
+   <div class="card"><div class="label">JOBS</div><div class="metric">${S.jobs.length}</div></div>
+   <div class="card"><div class="label">AUTOMATIONS</div><div class="metric">${S.automations.length}</div></div>
+  </div>
+
+  <div class="panel" style="margin-top:14px">
+   <div class="sectionTitle"><h3>Scheduler Queue</h3><button class="btn" id="refreshScheduler">Refresh</button></div>
+   <div class="tableWrap">
+    <table>
+     <thead><tr><th>ID</th><th>Automation</th><th>Target</th><th>Scheduled</th><th>Status</th><th>Attempts</th><th>Error</th></tr></thead>
+     <tbody>
+      ${S.jobs.length?S.jobs.map(j=>`
+       <tr>
+        <td>#${j.id}</td>
+        <td>${esc(j.automation_id||"")}</td>
+        <td>${esc(j.target_id||"")}</td>
+        <td>${esc(j.scheduled_at||"")}</td>
+        <td><span class="status">${esc(j.status||"")}</span></td>
+        <td>${esc(j.attempts||0)}</td>
+        <td>${esc(j.last_error||"")}</td>
+       </tr>`).join("")
+       :`<tr><td colspan="7" class="empty">Queue is empty.</td></tr>`}
+     </tbody>
+    </table>
+   </div>
+  </div>
+ `,"Scheduler","Server-side worker and scheduled job queue");
+}
+
+function analyticsView(){
+ const published=S.posts.filter(p=>String(p.status||"").toLowerCase()==="published").length;
+ const drafts=S.posts.filter(p=>String(p.status||"").toLowerCase()==="draft").length;
+ const failed=S.jobs.filter(j=>String(j.status||"").toLowerCase()==="failed").length;
+
+ return shell(`
+  <div class="grid4">
+   <div class="card"><div class="label">TOTAL POSTS</div><div class="metric">${S.posts.length}</div></div>
+   <div class="card"><div class="label">PUBLISHED</div><div class="metric">${published}</div></div>
+   <div class="card"><div class="label">DRAFTS</div><div class="metric">${drafts}</div></div>
+   <div class="card"><div class="label">FAILED JOBS</div><div class="metric">${failed}</div></div>
+  </div>
+
+  <div class="two" style="margin-top:14px">
+   <div class="panel">
+    <div class="sectionTitle"><h3>Platforms</h3></div>
+    ${PLATFORMS.map(([k,n])=>{
+     const targets=S.targets.filter(t=>t.platform===k).length;
+     const accounts=S.connectors.filter(c=>c.platform===k&&c.status==="connected").length;
+     return `<div class="smallRow" style="padding:9px 0;border-bottom:1px solid #102732">
+      <b>${n}</b><span class="muted right">${accounts} account · ${targets} target</span>
+     </div>`;
+    }).join("")}
+   </div>
+
+   <div class="panel">
+    <div class="sectionTitle"><h3>Jobs by Status</h3></div>
+    ${["queued","running","published","failed"].map(st=>{
+     const n=S.jobs.filter(j=>String(j.status||"").toLowerCase()===st).length;
+     return `<div class="smallRow" style="padding:9px 0;border-bottom:1px solid #102732"><b>${st}</b><span class="badge right">${n}</span></div>`;
+    }).join("")}
+   </div>
+  </div>
+ `,"Analytics","Live database-derived operational metrics");
+}
+
+function notificationsView(){
+ const errors=S.jobs.filter(j=>j.last_error);
+ return shell(`
+  <div class="panel">
+   <div class="sectionTitle">
+    <div><h2>Notifications</h2><div class="muted">Operational events generated from the current scheduler state.</div></div>
+    <span class="badge">${errors.length} errors</span>
+   </div>
+   ${
+    errors.length
+    ? errors.map(j=>`<div class="note" style="margin-bottom:8px"><b>Job #${j.id}</b> · ${esc(j.last_error)}</div>`).join("")
+    : `<div class="note">No scheduler errors currently recorded.</div>`
+   }
+  </div>
+ `,"Notifications","Operational alerts and scheduler errors");
+}
+
+function settingsView(){
+ return shell(`
+  <div class="panel">
+   <div class="sectionTitle"><h2>Workspace Settings</h2></div>
+   <form id="settingsForm" class="stack">
+    <div class="two">
+     <div><label class="small">Workspace Name</label><input name="workspace" value="${esc(S.settings.workspace||"NBSA Workspace")}"></div>
+     <div><label class="small">Timezone</label><input name="timezone" value="${esc(S.settings.timezone||"Asia/Dhaka")}"></div>
+    </div>
+    <div>
+     <label class="small">UI Refresh Interval (seconds)</label>
+     <input name="refresh" type="number" min="10" max="3600" value="${Number(S.settings.refresh||30)}">
+    </div>
+    <div class="smallRow">
+     <button class="btn primary">SAVE SETTINGS</button>
+     <button type="button" class="btn" id="resetSettings">Reset</button>
+    </div>
+   </form>
+  </div>
+ `,"Settings","Local workspace preferences");
+}
+
+function campaignsView(){
+ return shell(`
+  <div class="panel">
+   <div class="sectionTitle"><h2>Campaigns</h2></div>
+   <form id="campaignForm" class="two">
+    <div><label class="small">Campaign Name</label><input name="name" required placeholder="Campaign name"></div>
+    <div style="display:flex;align-items:end"><button class="btn primary full">CREATE CAMPAIGN</button></div>
+   </form>
+  </div>
+
+  <div class="panel">
+   <div class="tableWrap">
+    <table>
+     <thead><tr><th>ID</th><th>Name</th><th>Status</th><th>Created</th><th>Action</th></tr></thead>
+     <tbody>
+      ${S.campaigns.length?S.campaigns.map(c=>`
+       <tr>
+        <td>#${c.id}</td>
+        <td>${esc(c.name)}</td>
+        <td>${esc(c.status)}</td>
+        <td>${esc(c.created_at)}</td>
+        <td><button class="btn danger deleteCampaign" data-id="${c.id}">Delete</button></td>
+       </tr>`).join("")
+       :`<tr><td colspan="5" class="empty">No campaigns.</td></tr>`}
+     </tbody>
+    </table>
+   </div>
+  </div>
+ `,"Campaigns","Campaign containers");
+}
+
+function adminView(){
+ return shell(`
+  <div class="panel">
+   <div class="sectionTitle"><h2>Admin Users</h2><span class="badge">${S.users.length}</span></div>
+   <div class="tableWrap">
+    <table>
+     <thead><tr><th>ID</th><th>Email</th><th>Role</th><th>Tenant</th><th>Active</th><th>Created</th></tr></thead>
+     <tbody>
+      ${S.users.length?S.users.map(u=>`
+       <tr>
+        <td>#${u.id}</td>
+        <td>${esc(u.email)}</td>
+        <td>${esc(u.role)}</td>
+        <td>${esc(u.tenant_id)}</td>
+        <td>${u.is_active?"YES":"NO"}</td>
+        <td>${esc(u.created_at)}</td>
+       </tr>`).join("")
+       :`<tr><td colspan="6" class="empty">No users.</td></tr>`}
+     </tbody>
+    </table>
+   </div>
+  </div>
+ `,"Admin Users","Tenant-scoped user administration");
+}
+
+function viewHtml(){
+ switch(S.view){
+  case "posts": return postsView();
+  case "campaigns": return campaignsView();
+  case "accounts": return accountsView();
+  case "targets": return targetsView();
+  case "automations": return automationsView();
+  case "scheduler": return schedulerView();
+  case "analytics": return analyticsView();
+  case "notifications": return notificationsView();
+  case "settings": return settingsView();
+  case "admin": return adminView();
+  default: return overviewView();
+ }
+}
+
+function render(){
+ $("#root").innerHTML=viewHtml();
+ bind();
+}
+
+function selectedPlatformSet(){
+ return new Set($$('input[name="platform"]:checked').map(x=>x.value));
+}
+
+function updateComposerTargetVisibility(){
+ const selected=selectedPlatformSet();
+ $$(".platform-target-group").forEach(g=>{
+  const p=g.dataset.platformGroup;
+  g.style.display=selected.has(p)?"block":"none";
+ });
+ updateComposerSummary();
+}
+
+function updateComposerSummary(){
+ const platforms=$$('input[name="platform"]:checked').map(x=>x.value);
+ const targets=$$('input[name="target_id"]:checked').length;
+ const action=$('input[name="action"]:checked')?.value||"publish";
+ const mode=$("#scheduleMode")?.value||"draft";
+
+ $("#targetCount") && ($("#targetCount").textContent=targets+" selected");
+ $("#composerSummary") && (
+  $("#composerSummary").textContent=
+   platforms.length
+   ? `${platforms.join(", ")} · ${targets} target(s) · ${action} · ${mode}`
+   : "Choose platform(s) and target(s)."
+ );
+}
+
+function localDateTimeString(){
+ const d=new Date();
+ const p=n=>String(n).padStart(2,"0");
+ return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
+function bind(){
+ $$("[data-nav]").forEach(b=>{
+  b.addEventListener("click",()=>{
+   S.view=b.dataset.nav;
+   render();
+   window.scrollTo({top:0,behavior:"smooth"});
+  });
+ });
+
+ $("#refreshBtn")?.addEventListener("click",async()=>{
+  try{await loadAll();render();toast("All data refreshed")}catch(e){toast(e.message,false)}
+ });
+
+ $("#logoutBtn")?.addEventListener("click",async()=>{
+  try{await api("/api/auth/logout",{method:"POST"})}catch(_){}
+  localStorage.removeItem("nbsa_token");
+  location.href="/login.html";
+ });
+
+ if(S.view==="posts")bindPosts();
+ if(S.view==="targets")bindTargets();
+ if(S.view==="automations")bindAutomations();
+ if(S.view==="accounts")bindAccounts();
+ if(S.view==="scheduler"){
+  $("#refreshScheduler")?.addEventListener("click",async()=>{await loadAll();render()});
+ }
+ if(S.view==="campaigns")bindCampaigns();
+ if(S.view==="settings")bindSettings();
+}
+
+function bindAccounts(){
+ $$(".connectOAuth").forEach(b=>{
+  b.addEventListener("click",async()=>{
+   const platform=b.dataset.platform;
+   try{
+    const result=await api("/api/oauth/start/"+encodeURIComponent(platform));
+    if(!result.url)throw new Error("OAuth URL was not returned");
+    location.href=result.url;
+   }catch(e){
+    toast(e.message,false);
+   }
+  });
+ });
+
+ $$(".connectTelegram").forEach(b=>{
+  b.addEventListener("click",async()=>{
+   try{
+    const result=await api("/api/telegram/connect",{method:"POST",body:"{}"});
+    await loadAll();
+    render();
+    toast("Telegram Bot connected: "+(result.account_name||"Bot"));
+   }catch(e){
+    toast(e.message,false);
+   }
+  });
+ });
+
+ const qp=new URLSearchParams(location.search);
+ const oauth=qp.get("oauth");
+ const platform=qp.get("platform");
+ const reason=qp.get("reason");
+
+ if(oauth==="success"){
+  history.replaceState({},document.title,"/dashboard.html");
+  toast((platform||"Platform")+" connected successfully");
+ }
+
+ if(oauth==="error"){
+  history.replaceState({},document.title,"/dashboard.html");
+  toast("Connection failed: "+(reason||"OAuth failed"),false);
+ }
+}
+
+function bindPosts(){
+ $$('input[name="platform"]').forEach(x=>x.addEventListener("change",updateComposerTargetVisibility));
+
+ $$("[data-select-all]").forEach(master=>{
+  master.addEventListener("change",()=>{
+   const p=master.dataset.selectAll;
+   $$(`input[name="target_id"][data-target-platform="${p}"]`).forEach(x=>x.checked=master.checked);
+   updateComposerSummary();
+  });
+ });
+
+ $$('input[name="target_id"]').forEach(x=>x.addEventListener("change",()=>{
+  const p=x.dataset.targetPlatform;
+  const platform=$(`input[name="platform"][value="${p}"]`);
+  if(x.checked&&platform)platform.checked=true;
+  updateComposerTargetVisibility();
+ }));
+
+ $$('input[name="action"]').forEach(x=>x.addEventListener("change",updateComposerSummary));
+
+ $("#scheduleMode")?.addEventListener("change",()=>{
+  $("#scheduleBox").hidden=$("#scheduleMode").value!=="scheduled";
+  updateComposerSummary();
+ });
+
+ $("#goTargets")?.addEventListener("click",()=>{
+  S.view="targets";
+  render();
+ });
+
+ $("#mediaFile")?.addEventListener("change",async e=>{
+  const file=e.target.files?.[0];
+  const img=$("#mediaPreview");
+  if(!file){img.hidden=true;return}
+  if(!file.type.startsWith("image/")){toast("Select an image file",false);e.target.value="";img.hidden=true;return}
+  if(file.size>5*1024*1024){toast("Image must be 5 MB or smaller",false);e.target.value="";img.hidden=true;return}
+  const reader=new FileReader();
+  reader.onload=()=>{img.src=reader.result;img.hidden=false};
+  reader.readAsDataURL(file);
+ });
+
+ $("#composerForm")?.addEventListener("submit",async e=>{
+  e.preventDefault();
+
+  const err=$("#composerError");
+  err.style.display="none";
+  err.textContent="";
+
+  const f=new FormData(e.target);
+  const content=String(f.get("content")||"").trim();
+  const file=$("#mediaFile")?.files?.[0];
+  const mode=String(f.get("mode")||"draft");
+  const action=String(f.get("action")||"publish");
+  const name=String(f.get("name")||"NBSA Automation").trim()||"NBSA Automation";
+  const platforms=[...e.target.querySelectorAll('input[name="platform"]:checked')].map(x=>x.value);
+  const targetIds=[...e.target.querySelectorAll('input[name="target_id"]:checked')].map(x=>Number(x.value));
+
+  try{
+   if(!content&&!file)throw new Error("Add post text or a photo.");
+   if(!platforms.length&&mode!=="draft")throw new Error("Select at least one platform.");
+   if(!targetIds.length&&mode!=="draft")throw new Error("Select at least one target.");
+
+   let media=null;
+
+   if(file){
+    if(file.size>5*1024*1024)throw new Error("Image must be 5 MB or smaller.");
+    media=await new Promise((resolve,reject)=>{
+     const r=new FileReader();
+     r.onload=()=>resolve(String(r.result||""));
+     r.onerror=()=>reject(new Error("Could not read image."));
+     r.readAsDataURL(file);
+    });
+   }
+
+   const post=await api("/api/posts",{
+    method:"POST",
+    body:JSON.stringify({
+     content,
+     media,
+     media_data:media,
+     status:"draft",
+     scheduled_at:null
+    })
+   });
+
+   if(mode==="draft"){
+    await loadAll();
+    S.view="posts";
+    render();
+    toast("Draft saved successfully.");
+    return;
+   }
+
+   let scheduledAt;
+
+   if(mode==="now"){
+    scheduledAt=localDateTimeString();
+   }else{
+    const v=String(f.get("scheduled_at")||"").trim();
+    if(!v)throw new Error("Choose a schedule date and time.");
+    scheduledAt=v.replace("T"," ")+":00";
+   }
+
+   const recurringRule=mode==="scheduled"?String(f.get("recurring_rule")||"").trim()||null:null;
+
+   const automation=await api("/api/automations",{
+    method:"POST",
+    body:JSON.stringify({
+     name,
+     post_id:Number(post.id),
+     action,
+     target_ids:targetIds,
+     scheduled_at:scheduledAt,
+     recurring_rule:recurringRule
+    })
+   });
+
+   await loadAll();
+   S.view="automations";
+   render();
+   toast(`Automation created for ${automation.targets_created||targetIds.length} target(s).`);
+
+  }catch(x){
+   err.textContent=x.message;
+   err.style.display="block";
+   toast(x.message,false);
+  }
+ });
+
+ updateComposerTargetVisibility();
+}
+
+function bindTargets(){
+ $("#targetForm")?.addEventListener("submit",async e=>{
+  e.preventDefault();
+  const f=new FormData(e.target);
+  const connectorId=Number(f.get("connector_id"));
+  const connector=S.connectors.find(c=>c.id===connectorId);
+
+  try{
+   if(!connector)throw new Error("Choose a connected account.");
+   await api("/api/targets",{
+    method:"POST",
+    body:JSON.stringify({
+     connector_id:connectorId,
+     platform:connector.platform,
+     target_type:String(f.get("target_type")||"destination"),
+     target_input:String(f.get("target_input")||"").trim(),
+     target_name:String(f.get("target_name")||"").trim()||null,
+     platform_target_id:String(f.get("platform_target_id")||"").trim()||null
+    })
+   });
+   await loadAll();
+   render();
+   toast("Target saved.");
+  }catch(x){toast(x.message,false)}
+ });
+
+ $("#refreshTargets")?.addEventListener("click",async()=>{
+  try{await loadAll();render();toast("Targets refreshed")}catch(x){toast(x.message,false)}
+ });
+
+ $$(".deleteTarget").forEach(b=>{
+  b.addEventListener("click",async()=>{
+   if(!confirm("Delete target #"+b.dataset.id+"?"))return;
+   try{
+    await api("/api/targets/"+b.dataset.id,{method:"DELETE"});
+    await loadAll();render();toast("Target deleted.");
+   }catch(x){toast(x.message,false)}
+  });
+ });
+}
+
+function bindAutomations(){
+ $$(".deleteAutomation").forEach(b=>{
+  b.addEventListener("click",async()=>{
+   if(!confirm("Delete automation #"+b.dataset.id+"?"))return;
+   try{
+    await api("/api/automations/"+b.dataset.id,{method:"DELETE"});
+    await loadAll();render();toast("Automation deleted.");
+   }catch(x){toast(x.message,false)}
+  });
+ });
+}
+
+function bindCampaigns(){
+ $("#campaignForm")?.addEventListener("submit",async e=>{
+  e.preventDefault();
+  const f=new FormData(e.target);
+  try{
+   await api("/api/campaigns",{
+    method:"POST",
+    body:JSON.stringify({name:String(f.get("name")||"").trim(),status:"active"})
+   });
+   await loadAll();render();toast("Campaign created.");
+  }catch(x){toast(x.message,false)}
+ });
+
+ $$(".deleteCampaign").forEach(b=>{
+  b.addEventListener("click",async()=>{
+   if(!confirm("Delete campaign #"+b.dataset.id+"?"))return;
+   try{
+    await api("/api/campaigns/"+b.dataset.id,{method:"DELETE"});
+    await loadAll();render();toast("Campaign deleted.");
+   }catch(x){toast(x.message,false)}
+  });
+ });
+}
+
+function bindSettings(){
+ $("#settingsForm")?.addEventListener("submit",e=>{
+  e.preventDefault();
+  const f=new FormData(e.target);
+  S.settings={
+   workspace:String(f.get("workspace")||"").trim(),
+   timezone:String(f.get("timezone")||"Asia/Dhaka").trim(),
+   refresh:Math.max(10,Number(f.get("refresh"))||30)
+  };
+  localStorage.setItem("nbsa_settings",JSON.stringify(S.settings));
+  toast("Settings saved.");
+ });
+
+ $("#resetSettings")?.addEventListener("click",()=>{
+  localStorage.removeItem("nbsa_settings");
+  S.settings={};
+  render();
+  toast("Settings reset.");
+ });
+}
+
+async function loadAll(){
+ const results=await Promise.all([
+  api("/api/me"),
+  api("/api/posts"),
+  api("/api/campaigns"),
+  api("/api/oauth/connectors"),
+  api("/api/scheduler/jobs"),
+  api("/api/status"),
+  api("/api/targets"),
+  api("/api/automations"),
+  api("/api/oauth/providers")
+ ]);
+
+ S.me=results[0].user;
+ S.posts=results[1].posts||[];
+ S.campaigns=results[2].campaigns||[];
+ S.connectors=results[3].connectors||[];
+ S.jobs=results[4].jobs||[];
+ S.status=results[5];
+ S.targets=results[6].targets||[];
+ S.automations=results[7].automations||[];
+ S.oauthProviders=results[8].providers||{};
+
+ if(S.me.role==="owner"||S.me.role==="admin"){
+  try{
+   const u=await api("/api/admin/users");
+   S.users=u.users||[];
+  }catch(_){S.users=[]}
+ }
+}
+
+(async function init(){
+ const token=localStorage.getItem("nbsa_token");
+ if(!token){
+  location.href="/login.html";
+  return;
+ }
+
+ try{
+  await loadAll();
+  render();
+ }catch(e){
+  $("#root").innerHTML=`
+   <div style="padding:30px;color:#d8f7ff">
+    <div class="panel">
+     <h2>NBSA Dashboard Error</h2>
+     <div class="note">${esc(e.message)}</div>
+     <button class="btn primary" style="margin-top:12px" onclick="location.reload()">Reload</button>
+    </div>
+   </div>`;
+ }
+})();
+</script>
+</body>
+</html>

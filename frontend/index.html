@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NAYEM BOSS SOCIAL AUTOMATION</title>
+<style>
+html,body{margin:0;width:100%;height:100%;background:#06101c;color:#eef6ff;
+font-family:Inter,system-ui,Arial,sans-serif}
+body{display:grid;place-items:center}
+.box{text-align:center}
+.logo{font-size:26px;font-weight:950;letter-spacing:.14em;color:#52e1c1}
+p{color:#91a5bc}
+</style>
+<link rel="stylesheet" href="/cyber.css"></head>
+<body>
+<div class="box">
+  <div class="logo">NBSA</div>
+  <p>Opening your workspace…</p>
+</div>
+<script>
+const token=localStorage.getItem("nbsa_token");
+location.replace(token ? "/dashboard.html" : "/login.html");
+</script>
+</body>
+</html>

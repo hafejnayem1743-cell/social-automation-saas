@@ -1,7 +1,39 @@
 import json, sqlite3, hashlib, secrets, hmac, os, threading, time
 from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs, quote
+
+
+def _load_local_env():
+    path=os.path.join(os.path.dirname(__file__), '..', '.env')
+    if not os.path.exists(path):
+        return
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            for line in f:
+                line=line.strip()
+                if not line or line.startswith('#') or '=' not in line:
+                    continue
+                k,v=line.split('=',1)
+                k=k.strip()
+                v=v.strip().strip('"').strip("'")
+                if k and v:
+                    os.environ.setdefault(k,v)
+    except Exception:
+        pass
+
+
+_load_local_env()
+
+from publishing_engine import publish
+from oauth_engine import (
+    ensure_oauth_schema,
+    provider_info,
+    create_oauth_start,
+    complete_oauth,
+    telegram_connect,
+    redirect_uri,
+)
 
 DB="social_automation.db"
 HOST="127.0.0.1"
@@ -12,10 +44,38 @@ WORKER_INTERVAL=10
 def db():
     c=sqlite3.connect(DB)
     c.row_factory=sqlite3.Row
+
+    try:
+        exists=c.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='posts'"
+        ).fetchone()
+
+        if exists:
+            cols=[r[1] for r in c.execute("PRAGMA table_info(posts)").fetchall()]
+            if "media_data" not in cols:
+                c.execute("ALTER TABLE posts ADD COLUMN media_data TEXT")
+
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS password_resets(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            token_hash TEXT UNIQUE NOT NULL,
+            expires_at TEXT NOT NULL,
+            used_at TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        )
+        """)
+
+        c.commit()
+    except sqlite3.OperationalError:
+        pass
+
+    ensure_automation_schema(c)
     return c
 
 def now():
-    return datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 def init_db():
     c=db()
@@ -69,6 +129,9 @@ def hash_password(password,salt=None):
     salt=salt or secrets.token_bytes(16)
     dk=hashlib.pbkdf2_hmac("sha256",password.encode(),salt,200000)
     return salt.hex()+"$"+dk.hex()
+
+def reset_token_hash(token):
+    return hashlib.sha256(token.encode()).hexdigest()
 
 LOGIN_ATTEMPTS = {}
 LOGIN_LOCK = threading.Lock()
@@ -129,8 +192,13 @@ def worker():
                 o.access_token,
                 o.refresh_token,
                 o.token_expires_at,
+                o.webhook_url,
                 o.status AS connector_status,
-                p.content AS post_content
+                p.content AS post_content,
+                j.target_id AS target_id,
+                j.action AS action,
+                j.automation_id AS automation_id,
+                p.media_data AS post_media
             FROM scheduled_jobs j
             JOIN oauth_connectors o ON o.id=j.connector_id
                 AND o.tenant_id=j.tenant_id
@@ -162,38 +230,70 @@ def worker():
                         "access_token": j["access_token"],
                         "refresh_token": j["refresh_token"],
                         "token_expires_at": j["token_expires_at"],
+                        "webhook_url": j["webhook_url"],
                     }
 
                     if not j["post_content"]:
                         raise ValueError("post_content_missing")
 
+                    target_id=j["target_id"]
+
+                    if target_id:
+                        target=c.execute("""
+                        SELECT *
+                        FROM automation_targets
+                        WHERE id=? AND tenant_id=? AND status='active'
+                        """,(target_id,j["tenant_id"])).fetchone()
+
+                        if not target:
+                            raise ValueError("target_not_found")
+
+                        account=dict(account)
+                        account["target_id"]=target["id"]
+                        account["target_type"]=target["target_type"]
+                        account["target_input"]=target["target_input"]
+                        account["target_name"]=target["target_name"]
+                        account["platform_target_id"]=target["platform_target_id"]
+                        account["action"]=j["action"] or "publish"
+                        account["target_metadata"]=target["metadata_json"]
+
                     result=publish(
                         j["platform"],
                         account,
-                        j["post_content"]
+                        j["post_content"],
+                        j["post_media"]
                     )
 
-                    if result.ok:
+                    if isinstance(result, dict):
+                        result_ok = bool(result.get("ok"))
+                        result_retryable = bool(result.get("retryable", False))
+                        result_error = result.get("error")
+                    else:
+                        result_ok = bool(result.ok)
+                        result_retryable = bool(result.retryable)
+                        result_error = getattr(result, 'error', None)
+
+                    if result_ok:
                         c.execute("""
                         UPDATE scheduled_jobs
                         SET status='published',last_error=NULL,updated_at=?
                         WHERE id=?
                         """,(now(),j["id"]))
                     else:
-                        if result.retryable and j["attempts"] < 3:
+                        if result_retryable and j["attempts"] < 3:
                             delay = 30 * (2 ** (j["attempts"] - 1))
                             retry_at = (datetime.utcnow() + timedelta(seconds=delay)).strftime("%Y-%m-%d %H:%M:%S")
                             c.execute("""
                             UPDATE scheduled_jobs
                             SET status='pending',scheduled_at=?,last_error=?,updated_at=?
                             WHERE id=?
-                            """,(retry_at,result.error or "publish_retry",now(),j["id"]))
+                            """,(retry_at,result_error or "publish_retry",now(),j["id"]))
                         else:
                             c.execute("""
                             UPDATE scheduled_jobs
                             SET status='failed',last_error=?,updated_at=?
                             WHERE id=?
-                            """,(result.error or "publish_failed",now(),j["id"]))
+                            """,(result_error or "publish_failed",now(),j["id"]))
 
                 except Exception as e:
                     c.execute("""
@@ -210,6 +310,31 @@ def worker():
 
         time.sleep(WORKER_INTERVAL)
 
+try:
+    from app.automation_engine import (
+        PLATFORMS,
+        ACTIONS,
+        ensure_automation_schema,
+        list_targets,
+        create_target,
+        delete_target,
+        list_automations,
+        create_automation,
+        delete_automation,
+    )
+except ModuleNotFoundError:
+    from automation_engine import (
+        PLATFORMS,
+        ACTIONS,
+        ensure_automation_schema,
+        list_targets,
+        create_target,
+        delete_target,
+        list_automations,
+        create_automation,
+        delete_automation,
+    )
+
 class API(BaseHTTPRequestHandler):
 
     def log_message(self,*args):
@@ -225,11 +350,59 @@ class API(BaseHTTPRequestHandler):
     def do_GET(self):
         p=urlparse(self.path).path
 
+        if p=="/api/targets":
+            u=require(self)
+            if not u:return
+            c=db()
+            data=list_targets(c,u["tenant_id"])
+            c.close()
+            return response(self,200,{"targets":data})
+
+        if p=="/api/automations":
+            u=require(self)
+            if not u:return
+            c=db()
+            data=list_automations(c,u["tenant_id"])
+            c.close()
+            return response(self,200,{"automations":data})
+
         if p=="/health":
             return response(self,200,{"status":"ok","version":"0.5.0"})
 
+        # OAuth callback is intentionally public: provider redirects here.
+        if p.startswith("/oauth/callback/"):
+            platform=p.rsplit("/",1)[-1].strip().lower()
+            params=parse_qs(urlparse(self.path).query)
+            c=db()
+            owner,result=complete_oauth(c,platform,params)
+            c.close()
+
+            frontend=os.getenv("NBSA_FRONTEND_URL","http://127.0.0.1:5173").rstrip("/")
+            if result.get("ok"):
+                location=frontend+"/dashboard.html?oauth=success&platform="+quote(platform)
+            else:
+                location=frontend+"/dashboard.html?oauth=error&platform="+quote(platform)+"&reason="+quote(str(result.get("error") or result.get("provider_error") or "oauth_failed"))
+
+            self.send_response(302)
+            self.send_header("Location",location)
+            self.send_header("Cache-Control","no-store")
+            self.end_headers()
+            return
+
         u=require(self)
         if not u:return
+
+        if p=="/api/oauth/providers":
+            return response(self,200,{"providers":provider_info()})
+
+        if p.startswith("/api/oauth/start/"):
+            platform=p.rsplit("/",1)[-1].strip().lower()
+            c=db()
+            url,error=create_oauth_start(c,u,platform)
+            c.close()
+            if error:
+                return response(self,400,{"detail":error,"platform":platform})
+            return response(self,200,{"platform":platform,"url":url})
 
         c=db()
 
@@ -254,7 +427,7 @@ class API(BaseHTTPRequestHandler):
 
         if p=="/api/posts":
             rows=c.execute("""
-            SELECT id,tenant_id,content,status,scheduled_at,created_at
+            SELECT id,tenant_id,content,status,scheduled_at,created_at,media_data
             FROM posts WHERE tenant_id=? ORDER BY id DESC
             """,(u["tenant_id"],)).fetchall()
             c.close()
@@ -283,8 +456,8 @@ class API(BaseHTTPRequestHandler):
 
         if p=="/api/scheduler/jobs":
             rows=c.execute("""
-            SELECT id,post_id,connector_id,scheduled_at,status,
-                   attempts,last_error,created_at,updated_at
+            SELECT id,post_id,connector_id,target_id,action,automation_id,
+                   scheduled_at,status,attempts,last_error,created_at,updated_at
             FROM scheduled_jobs
             WHERE tenant_id=?
             ORDER BY id DESC
@@ -463,6 +636,48 @@ class API(BaseHTTPRequestHandler):
 
     def do_DELETE(self):
         p=urlparse(self.path).path
+
+        if p.startswith("/api/targets/"):
+            u=require(self)
+            if not u:return
+
+            try:
+                target_id=int(p.rsplit("/",1)[1])
+            except ValueError:
+                return response(self,400,{"detail":"Invalid target id"})
+
+            c=db()
+            ok=delete_target(c,u["tenant_id"],target_id)
+            c.close()
+
+            if not ok:
+                return response(self,404,{"detail":"Target not found"})
+
+            return response(self,200,{
+                "message":"Target deleted",
+                "id":target_id
+            })
+
+        if p.startswith("/api/automations/"):
+            u=require(self)
+            if not u:return
+
+            try:
+                automation_id=int(p.rsplit("/",1)[1])
+            except ValueError:
+                return response(self,400,{"detail":"Invalid automation id"})
+
+            c=db()
+            ok=delete_automation(c,u["tenant_id"],automation_id)
+            c.close()
+
+            if not ok:
+                return response(self,404,{"detail":"Automation not found"})
+
+            return response(self,200,{
+                "message":"Automation deleted",
+                "id":automation_id
+            })
         u=require(self)
         if not u:return
 
@@ -584,9 +799,7 @@ class API(BaseHTTPRequestHandler):
 
             c.execute("DELETE FROM sessions WHERE user_id=? AND expires_at<=datetime('now')",(u["id"],))
             token=secrets.token_urlsafe(32)
-
-            token=secrets.token_urlsafe(32)
-            exp=(datetime.utcnow()+timedelta(days=SESSION_DAYS)).strftime("%Y-%m-%d %H:%M:%S")
+            exp=(datetime.now()+timedelta(days=SESSION_DAYS)).strftime("%Y-%m-%d %H:%M:%S")
             c.execute("INSERT INTO sessions(token,user_id,created_at,expires_at) VALUES(?,?,?,?)",
                       (token,u["id"],now(),exp))
             c.commit()
@@ -597,6 +810,97 @@ class API(BaseHTTPRequestHandler):
 
             return response(self,200,{"message":"Login successful","token":token,"expires_at":exp,
                 "user":{"id":u["id"],"email":u["email"],"role":u["role"],"tenant_id":u["tenant_id"]}})
+
+        if p=="/api/auth/forgot-password":
+            d=body(self)
+            email=str(d.get("email","")).strip().lower()
+
+            # Always return the same public message to avoid account enumeration.
+            message="If that email exists, a password reset link has been generated."
+
+            token=secrets.token_urlsafe(32)
+            token_hash=reset_token_hash(token)
+            exp=(datetime.now()+timedelta(minutes=30)).strftime("%Y-%m-%d %H:%M:%S")
+
+            c=db()
+            u=c.execute(
+                "SELECT id FROM users WHERE email=? AND is_active=1",
+                (email,)
+            ).fetchone()
+
+            if u:
+                c.execute(
+                    "DELETE FROM password_resets WHERE user_id=? OR expires_at<=datetime('now')",
+                    (u["id"],)
+                )
+                c.execute("""
+                INSERT INTO password_resets(user_id,token_hash,expires_at,created_at)
+                VALUES(?,?,?,?)
+                """,(u["id"],token_hash,exp,now()))
+                c.commit()
+
+            c.close()
+
+            # Free-first/local mode: provide a usable local reset link.
+            # Set NBSA_DEV_RESET_LINK=0 in production and deliver this link by email instead.
+            dev_reset=os.getenv("NBSA_DEV_RESET_LINK","1")!="0"
+
+            out={"message":message,"expires_in_minutes":30}
+            if dev_reset:
+                frontend=os.getenv(
+                    "NBSA_FRONTEND_URL",
+                    "http://127.0.0.1:5173"
+                ).rstrip("/")
+                out["reset_link"]=f"{frontend}/reset.html?token={token}"
+
+            return response(self,200,out)
+
+        if p=="/api/auth/reset-password":
+            d=body(self)
+            token=str(d.get("token","")).strip()
+            password=str(d.get("password",""))
+
+            if not token:
+                return response(self,400,{"detail":"Reset token is required"})
+
+            if len(password)<8:
+                return response(self,400,{"detail":"Password must be at least 8 characters"})
+
+            token_hash=reset_token_hash(token)
+            c=db()
+
+            row=c.execute("""
+            SELECT id,user_id
+            FROM password_resets
+            WHERE token_hash=?
+              AND used_at IS NULL
+              AND expires_at>datetime('now')
+            """,(token_hash,)).fetchone()
+
+            if not row:
+                c.close()
+                return response(self,400,{"detail":"Reset link is invalid or expired"})
+
+            c.execute(
+                "UPDATE users SET password_hash=? WHERE id=? AND is_active=1",
+                (hash_password(password),row["user_id"])
+            )
+            c.execute(
+                "UPDATE password_resets SET used_at=? WHERE id=?",
+                (now(),row["id"])
+            )
+            c.execute(
+                "DELETE FROM password_resets WHERE user_id=? AND id!=?",
+                (row["user_id"],row["id"])
+            )
+            c.execute(
+                "DELETE FROM sessions WHERE user_id=?",
+                (row["user_id"],)
+            )
+            c.commit()
+            c.close()
+
+            return response(self,200,{"message":"Password reset successful. Please login again."})
 
         if p=="/api/auth/logout":
             u=require(self)
@@ -640,8 +944,17 @@ class API(BaseHTTPRequestHandler):
             content=str(d.get("content","")).strip()
             status=str(d.get("status","draft")).strip().lower()
             scheduled_at=d.get("scheduled_at")
+            media_data=str(d.get("media") or "").strip()
 
-            if not content:
+            if media_data:
+                if not media_data.startswith("data:image/"):
+                    c.close()
+                    return response(self,400,{"detail":"Only image uploads are supported"})
+                if len(media_data) > 7000000:
+                    c.close()
+                    return response(self,400,{"detail":"Image is too large; maximum is about 5 MB"})
+
+            if not content and not media_data:
                 c.close()
                 return response(self,400,{"detail":"content is required"})
 
@@ -651,13 +964,35 @@ class API(BaseHTTPRequestHandler):
 
             t=now()
             cur=c.execute("""
-            INSERT INTO posts(tenant_id,content,status,scheduled_at,created_at)
-            VALUES(?,?,?,?,?)
-            """,(u["tenant_id"],content,status,scheduled_at,t))
+            INSERT INTO posts(tenant_id,content,status,scheduled_at,created_at,media_data)
+            VALUES(?,?,?,?,?,?)
+            """,(u["tenant_id"],content,status,scheduled_at,t,media_data or None))
             c.commit()
             pid=cur.lastrowid
             c.close()
             return response(self,201,{"message":"Post created","id":pid})
+
+        if p=="/api/telegram/connect":
+            if not has_permission(u,"connectors_manage"):
+                c.close()
+                return response(self,403,{"detail":"Insufficient permissions"})
+
+            ok,result=telegram_connect(c,u)
+            c.close()
+
+            if not ok:
+                return response(self,400,result)
+
+            return response(self,200,{
+                "message":"Telegram Bot connected",
+                **result
+            })
+
+        if p=="/api/oauth/connectors":
+            c.close()
+            return response(self,405,{
+                "detail":"Manual token connectors are disabled. Use official Connect OAuth or Telegram Bot Connect."
+            })
 
         if p=="/api/oauth/connectors":
             if not has_permission(u,"connectors_manage"):
@@ -671,7 +1006,7 @@ class API(BaseHTTPRequestHandler):
                 c.close()
                 return response(self,400,{"detail":"platform and account_name are required"})
 
-            allowed_platforms={"telegram","wordpress","website"}
+            allowed_platforms={"facebook","instagram","telegram","x","youtube","tiktok","pinterest","reddit"}
             if platform not in allowed_platforms:
                 c.close()
                 return response(self,400,{"detail":"Unsupported platform"})
@@ -680,14 +1015,15 @@ class API(BaseHTTPRequestHandler):
             cur=c.execute("""
             INSERT INTO oauth_connectors
             (tenant_id,user_id,platform,account_name,platform_user_id,
-             access_token,refresh_token,token_expires_at,status,created_at,updated_at)
-            VALUES(?,?,?,?,?,?,?,?,?,?,?)
+             access_token,refresh_token,token_expires_at,webhook_url,status,created_at,updated_at)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
             """,(
                 u["tenant_id"],u["id"],platform,account,
                 d.get("platform_user_id"),
                 d.get("access_token"),
                 d.get("refresh_token"),
                 d.get("token_expires_at"),
+                d.get("webhook_url"),
                 "connected",t,t
             ))
             c.commit()
@@ -700,13 +1036,27 @@ class API(BaseHTTPRequestHandler):
                 c.close()
                 return response(self,403,{"detail":"Insufficient permissions"})
 
+            post_id=d.get("post_id")
+            connector_id=d.get("connector_id")
+
+            if post_id is None or connector_id is None:
+                c.close()
+                return response(
+                    self,400,
+                    {"detail":"post_id and connector_id are required"}
+                )
+
             scheduled=str(d.get("scheduled_at","")).strip()
             if not scheduled:
                 c.close()
                 return response(self,400,{"detail":"scheduled_at is required"})
 
-            post_id=d.get("post_id")
-            if post_id is not None:
+            if not isinstance(post_id,int):
+                try: post_id=int(post_id)
+                except (TypeError,ValueError):
+                    c.close()
+                    return response(self,400,{"detail":"Invalid post id"})
+
                 r=c.execute("""
                 SELECT id FROM posts
                 WHERE id=? AND tenant_id=?
@@ -715,8 +1065,12 @@ class API(BaseHTTPRequestHandler):
                     c.close()
                     return response(self,400,{"detail":"Invalid post"})
 
-            connector_id=d.get("connector_id")
-            if connector_id is not None:
+            if not isinstance(connector_id,int):
+                try: connector_id=int(connector_id)
+                except (TypeError,ValueError):
+                    c.close()
+                    return response(self,400,{"detail":"Invalid connector id"})
+
                 r=c.execute("""
                 SELECT id FROM oauth_connectors
                 WHERE id=? AND tenant_id=?
@@ -743,37 +1097,8 @@ class API(BaseHTTPRequestHandler):
         return response(self,404,{"detail":"Not found"})
 
 
-# ==================== V0.7 OFFICIAL OAUTH ====================
-
-OAUTH_CONFIG = {
-    "facebook": {
-        "authorize_url": "https://www.facebook.com/v23.0/dialog/oauth",
-        "scopes": ["pages_manage_posts", "pages_read_engagement"]
-    },
-    "instagram": {
-        "authorize_url": "https://www.facebook.com/v23.0/dialog/oauth",
-        "scopes": ["instagram_basic", "instagram_content_publish"]
-    }
-}
-
-def oauth_config(platform):
-    return OAUTH_CONFIG.get(platform)
-
-def build_oauth_url(platform, client_id, redirect_uri, state):
-    from urllib.parse import urlencode
-    cfg = oauth_config(platform)
-    if not cfg:
-        return None
-
-    return cfg["authorize_url"] + "?" + urlencode({
-        "client_id": client_id,
-        "redirect_uri": redirect_uri,
-        "state": state,
-        "scope": ",".join(cfg["scopes"]),
-        "response_type": "code"
-    })
-
-print("V0.7 OFFICIAL OAUTH FOUNDATION LOADED")
+# ==================== OFFICIAL OAUTH RUNTIME ====================
+print("FULL 8-PLATFORM OAUTH RUNTIME LOADED")
 
 
 # ==================== UNIVERSAL CONNECTOR RUNTIME ====================
@@ -781,6 +1106,10 @@ try:
     from app.universal_connectors import PLATFORMS, platform_status, CONNECTOR_REGISTRY
     from app.publishing_engine import publish, get_publisher, PUBLISHERS
     from app.official_publishers import OFFICIAL_PUBLISHERS
+except ModuleNotFoundError:
+    from universal_connectors import PLATFORMS, platform_status, CONNECTOR_REGISTRY
+    from publishing_engine import publish, get_publisher, PUBLISHERS
+    from official_publishers import OFFICIAL_PUBLISHERS
     PUBLISHERS.update(OFFICIAL_PUBLISHERS)
     print("UNIVERSAL CONNECTOR RUNTIME: LOADED")
 except Exception as e:

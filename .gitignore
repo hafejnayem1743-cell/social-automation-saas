@@ -6,3 +6,9 @@ backend/.pytest_cache/
 backend/*.db
 backend/*.log
 *.pyc
+backend/*.db-*
+backend/logs/
+frontend/node_modules/
+frontend/dist/
+frontend/vite.log
+*.pid
