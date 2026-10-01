@@ -1,58 +1,168 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="color-scheme" content="dark">
-  <title>NBSA // Secure Access</title>
-  <link rel="stylesheet" href="./access.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>NBSA // Secure Access</title>
+<link rel="stylesheet" href="./access.css?v=20261001">
 </head>
 <body>
-  <main class="access-shell">
-    <canvas id="matrix"></canvas>
-    <div class="scanlines"></div>
-    <div class="vignette"></div>
+<main class="access-shell">
+<canvas id="matrix"></canvas>
+<div class="scanlines"></div>
+<div class="vignette"></div>
 
-    <section class="access-card">
-      <div class="brand">
-        <div class="brand-mark">NB</div>
-        <div>
-          <h1>NAYEM BOSS Social Automation</h1>
-          <p>SERVER-SIDE AUTOMATION // CONTROL CORE</p>
-        </div>
-      </div>
+<section class="access-card">
+  <div class="brand">
+    <div class="brand-mark">NB</div>
+    <div>
+      <h1>NAYEM BOSS Social Automation</h1>
+      <p>SECURE CONTROL CORE // SERVER AUTOMATION</p>
+    </div>
+  </div>
 
-      <div class="status-line">
-        <span><span class="status-dot"></span>Workspace locked</span>
-        <span>ACCESS GATE</span>
-      </div>
+  <div class="status-line">
+    <span><span class="status-dot"></span>WORKSPACE LOCKED</span>
+    <span>NBSA ACCESS</span>
+  </div>
 
-      <h2>Welcome back</h2>
-      <p class="sub">Enter the workspace password to continue. The access level is selected automatically.</p>
+  <h2>Welcome back</h2>
+  <p class="sub">Enter the workspace password to access the control panel.</p>
 
-      <form id="accessForm" autocomplete="off">
-        <div class="field">
-          <label for="accessPassword">Workspace password</label>
-          <input id="accessPassword" name="password" type="password" inputmode="text"
-                 autocomplete="current-password" autocapitalize="none" spellcheck="false"
-                 placeholder="Enter password" maxlength="128" required>
-          <button class="show-pass" id="showPassword" type="button">SHOW</button>
-        </div>
+  <form id="accessForm" autocomplete="off">
+    <div class="field">
+      <label for="accessPassword">Workspace password</label>
+      <input
+        id="accessPassword"
+        name="password"
+        type="password"
+        autocomplete="off"
+        autocapitalize="none"
+        spellcheck="false"
+        placeholder="Enter password"
+        maxlength="128"
+        required
+      >
+      <button class="show-pass" id="showPassword" type="button">SHOW</button>
+    </div>
 
-        <button class="submit" type="submit">ENTER WORKSPACE</button>
-        <div id="accessMessage" class="message" aria-live="polite"></div>
-      </form>
+    <button class="submit" type="submit">ENTER WORKSPACE</button>
+    <div id="accessMessage" class="message" aria-live="polite"></div>
+  </form>
 
-      <div class="meta">
-        <div>Core <b>ONLINE</b></div>
-        <div>Targets <b>8 PLATFORMS</b></div>
-        <div>Queue <b>READY</b></div>
-      </div>
+  <div class="meta">
+    <div>CORE <b>ONLINE</b></div>
+    <div>PLATFORMS <b>8 OFFICIAL</b></div>
+    <div>QUEUE <b>READY</b></div>
+  </div>
 
-      <div class="access-footer">AUTHORIZED WORKSPACE // NBSA // 2026</div>
-    </section>
-  </main>
+  <div class="access-footer">AUTHORIZED WORKSPACE // NBSA // 2026</div>
+</section>
+</main>
 
-  <script src="./access.js"></script>
+<script>
+(function () {
+  const ADMIN_PASSWORD = "Akib9990";
+  const USER_PASSWORD = "bnb999";
+
+  const form = document.getElementById("accessForm");
+  const input = document.getElementById("accessPassword");
+  const show = document.getElementById("showPassword");
+  const msg = document.getElementById("accessMessage");
+
+  function setAccess(role) {
+    sessionStorage.setItem("nbsa_access_role", role);
+    sessionStorage.setItem("nbsa_access_at", new Date().toISOString());
+
+    /* Compatibility with the old frontend auth layer */
+    localStorage.setItem("nbsa_access_role", role);
+    localStorage.setItem("nbsa_access_at", new Date().toISOString());
+
+    window.location.replace("./dashboard.html");
+  }
+
+  show.addEventListener("click", function () {
+    const visible = input.type === "text";
+    input.type = visible ? "password" : "text";
+    show.textContent = visible ? "SHOW" : "HIDE";
+    input.focus();
+  });
+
+  form.addEventListener("submit", function (event) {
+    event.preventDefault();
+
+    const password = String(input.value || "").trim();
+
+    msg.className = "message";
+    msg.textContent = "";
+
+    if (!password) {
+      msg.className = "message error";
+      msg.textContent = "PASSWORD REQUIRED";
+      input.focus();
+      return;
+    }
+
+    if (password === ADMIN_PASSWORD) {
+      msg.className = "message ok";
+      msg.textContent = "ACCESS GRANTED // ADMIN";
+      setAccess("admin");
+      return;
+    }
+
+    if (password === USER_PASSWORD) {
+      msg.className = "message ok";
+      msg.textContent = "ACCESS GRANTED // USER";
+      setAccess("user");
+      return;
+    }
+
+    msg.className = "message error";
+    msg.textContent = "ACCESS DENIED // INVALID PASSWORD";
+    input.select();
+  });
+
+  const canvas = document.getElementById("matrix");
+  const ctx = canvas.getContext("2d");
+  const chars = "01ABCDEFGHIJKLMNOPQRSTUVWXYZ#$%&<>[]{}";
+  let drops = [];
+
+  function resize() {
+    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    canvas.width = innerWidth * dpr;
+    canvas.height = innerHeight * dpr;
+    canvas.style.width = innerWidth + "px";
+    canvas.style.height = innerHeight + "px";
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    drops = Array.from(
+      { length: Math.ceil(innerWidth / 14) },
+      () => Math.random() * -60
+    );
+  }
+
+  function draw() {
+    ctx.fillStyle = "rgba(0,4,2,.11)";
+    ctx.fillRect(0,0,innerWidth,innerHeight);
+    ctx.font = "12px monospace";
+    ctx.fillStyle = "#00ff73";
+
+    for (let i = 0; i < drops.length; i++) {
+      const x = i * 14;
+      const y = drops[i] * 14;
+      ctx.fillText(chars[Math.floor(Math.random() * chars.length)], x, y);
+
+      if (y > innerHeight && Math.random() > .975) drops[i] = 0;
+      drops[i] += .55;
+    }
+
+    requestAnimationFrame(draw);
+  }
+
+  addEventListener("resize", resize);
+  resize();
+  draw();
+})();
+</script>
 </body>
 </html>
