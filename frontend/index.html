@@ -1,29 +1,58 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>NAYEM BOSS SOCIAL AUTOMATION</title>
-<link rel="stylesheet" href="./cyber.css">
-<style>
-body{display:grid;place-items:center;min-height:100vh}
-.gateway{text-align:center}
-.logo{font:900 42px Inter,system-ui;color:#36e8ff;letter-spacing:-2px}
-.name{margin-top:8px;color:#d8f8ff;font-size:14px}
-.load{margin-top:18px;color:#78939e;font:11px ui-monospace,monospace}
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <title>NBSA // Secure Access</title>
+  <link rel="stylesheet" href="./access.css">
 </head>
 <body>
-<div class="gateway">
-  <div class="logo">NB</div>
-  <div class="name">NAYEM BOSS SOCIAL AUTOMATION</div>
-  <div class="load">Initializing secure workspace...</div>
-</div>
-<script>
-(function(){
-  const token=localStorage.getItem("nbsa_token");
-  location.replace(token?"./dashboard.html":"./login.html");
-})();
-</script>
+  <main class="access-shell">
+    <canvas id="matrix"></canvas>
+    <div class="scanlines"></div>
+    <div class="vignette"></div>
+
+    <section class="access-card">
+      <div class="brand">
+        <div class="brand-mark">NB</div>
+        <div>
+          <h1>NAYEM BOSS Social Automation</h1>
+          <p>SERVER-SIDE AUTOMATION // CONTROL CORE</p>
+        </div>
+      </div>
+
+      <div class="status-line">
+        <span><span class="status-dot"></span>Workspace locked</span>
+        <span>ACCESS GATE</span>
+      </div>
+
+      <h2>Welcome back</h2>
+      <p class="sub">Enter the workspace password to continue. The access level is selected automatically.</p>
+
+      <form id="accessForm" autocomplete="off">
+        <div class="field">
+          <label for="accessPassword">Workspace password</label>
+          <input id="accessPassword" name="password" type="password" inputmode="text"
+                 autocomplete="current-password" autocapitalize="none" spellcheck="false"
+                 placeholder="Enter password" maxlength="128" required>
+          <button class="show-pass" id="showPassword" type="button">SHOW</button>
+        </div>
+
+        <button class="submit" type="submit">ENTER WORKSPACE</button>
+        <div id="accessMessage" class="message" aria-live="polite"></div>
+      </form>
+
+      <div class="meta">
+        <div>Core <b>ONLINE</b></div>
+        <div>Targets <b>8 PLATFORMS</b></div>
+        <div>Queue <b>READY</b></div>
+      </div>
+
+      <div class="access-footer">AUTHORIZED WORKSPACE // NBSA // 2026</div>
+    </section>
+  </main>
+
+  <script src="./access.js"></script>
 </body>
 </html>
