@@ -5,10 +5,10 @@ export default defineConfig({
     rollupOptions: {
       input: {
         index: "index.html",
-        login: "login.html",
-        register: "register.html",
-        forgot: "forgot.html",
-        reset: "reset.html",
+/* NBSA shared-password mode: legacy auth redirect disabled */
+/* NBSA shared-password mode: legacy auth redirect disabled */
+/* NBSA shared-password mode: legacy auth redirect disabled */
+/* NBSA shared-password mode: legacy auth redirect disabled */
         dashboard: "dashboard.html"
       }
     }

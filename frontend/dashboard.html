@@ -220,7 +220,7 @@ body::after{
 
   <link rel="stylesheet" href="./access.css">
   <script src="./access.js"></script>
-<link rel="stylesheet" href="./access.css?v=20261001"><script src="./access.js?v=20261001"></script></head>
+<link rel="stylesheet" href="./access.css?v=20261001"><script src="./access.js?v=20261001"></script><script src="./access-bridge.js?v=20261001"></script></head>
 <body>
 <div id="root"></div>
 <div id="toast" class="toast"></div>
@@ -288,7 +288,7 @@ async function api(path,opt={}){
  const data=await res.json().catch(()=>({}));
  if(res.status===401){
   localStorage.removeItem("nbsa_token");
-  location.href="./login.html";
+/* NBSA shared-password mode: legacy auth redirect disabled */
   throw new Error("Authentication required");
  }
  if(!res.ok){
@@ -1027,7 +1027,7 @@ function bind(){
  $("#logoutBtn")?.addEventListener("click",async()=>{
   try{await api("/api/auth/logout",{method:"POST"})}catch(_){}
   localStorage.removeItem("nbsa_token");
-  location.href="./login.html";
+/* NBSA shared-password mode: legacy auth redirect disabled */
  });
 
  if(S.view==="posts")bindPosts();
@@ -1348,7 +1348,7 @@ async function loadAll(){
 (async function init(){
  const token=localStorage.getItem("nbsa_token");
  if(!token){
-  location.href="./login.html";
+/* NBSA shared-password mode: legacy auth redirect disabled */
   return;
  }
 

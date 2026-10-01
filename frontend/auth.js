@@ -209,7 +209,7 @@
           "success"
         );
 
-        setTimeout(()=>location.replace("./login.html"),700);
+/* NBSA shared-password mode: legacy auth redirect disabled */
       }catch(err){
         showMessage(err.message);
       }finally{
@@ -330,7 +330,7 @@
           "success"
         );
 
-        setTimeout(()=>location.replace("./login.html"),800);
+/* NBSA shared-password mode: legacy auth redirect disabled */
       }catch(err){
         showMessage(err.message);
       }finally{
