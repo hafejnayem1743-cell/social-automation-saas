@@ -1,0 +1,38 @@
+:root{
+  --bg:#06101c;--card:#0d1a2b;--card2:#122238;--line:#263c55;
+  --text:#eef6ff;--muted:#91a5bc;--accent:#52e1c1;--danger:#ff718d
+}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:
+radial-gradient(circle at top right,#153047 0,#06101c 42%,#040b13 100%);
+color:var(--text);font-family:Inter,system-ui,Arial,sans-serif}
+button,input{font:inherit}
+.auth-shell{min-height:100vh;display:grid;place-items:center;padding:22px}
+.auth-card{width:min(460px,100%);background:rgba(13,26,43,.96);
+border:1px solid var(--line);border-radius:25px;padding:34px;
+box-shadow:0 30px 100px #0008}
+.brand{display:flex;align-items:center;gap:10px;margin-bottom:20px}
+.mark{width:45px;height:45px;border-radius:13px;display:grid;place-items:center;
+background:var(--accent);color:#04130f;font-weight:950}
+.brand-text strong{display:block;letter-spacing:.13em}
+.brand-text span{display:block;color:var(--muted);font-size:11px;letter-spacing:.08em;margin-top:2px}
+h1{font-size:29px;line-height:1.08;margin:0 0 8px}
+.sub{color:var(--muted);margin:0 0 22px}
+.field{margin-bottom:13px}.field label{display:block;color:var(--muted);font-size:13px;margin-bottom:5px}
+.input-wrap{position:relative}.input-wrap input{padding-right:78px}
+input{width:100%;padding:12px 13px;border-radius:12px;border:1px solid var(--line);
+background:#081422;color:var(--text);outline:0}
+input:focus{border-color:var(--accent)}
+.show{position:absolute;right:8px;top:7px;padding:6px 9px;background:transparent;
+border:0;color:var(--muted);cursor:pointer}
+.main-btn,.secondary{width:100%;padding:12px 14px;border-radius:12px;cursor:pointer}
+.main-btn{border:1px solid var(--accent);background:var(--accent);color:#04130f;font-weight:850}
+.secondary{margin-top:9px;border:1px solid var(--line);background:transparent;color:var(--text)}
+.links{display:flex;justify-content:space-between;gap:10px;margin-top:14px}
+.links a{color:var(--accent);text-decoration:none;font-size:13px}
+.notice{padding:12px 13px;border-radius:12px;border:1px solid var(--line);background:#0a1624;
+margin:12px 0;font-size:13px;line-height:1.45}
+.error{color:var(--danger);min-height:20px;font-size:13px;margin:12px 0}
+.success{color:var(--accent);font-size:13px;line-height:1.5}
+.reset-link{word-break:break-all;color:var(--accent);font-size:12px}
+@media(max-width:520px){.auth-card{padding:24px}.links{flex-direction:column}}
