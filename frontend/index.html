@@ -4,165 +4,183 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="dark">
-<title>NBSA // Secure Access</title>
-<link rel="stylesheet" href="./access.css?v=20261001">
+<title>NAYEM BOSS // ACCESS</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#020504;color:#d9ffe7;font-family:Arial,Helvetica,sans-serif}
+body{background:
+radial-gradient(circle at 50% 45%,rgba(0,255,100,.10),transparent 35%),
+linear-gradient(135deg,#010302,#031008 55%,#010302)}
+#matrix{position:fixed;inset:0;width:100%;height:100%;opacity:.20}
+.overlay{position:fixed;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,transparent 0,transparent 3px,rgba(0,255,100,.025) 4px)}
+.wrap{position:relative;z-index:2;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.card{width:min(470px,100%);padding:30px;border:1px solid rgba(0,255,100,.28);border-radius:22px;background:rgba(1,10,5,.90);box-shadow:0 0 50px rgba(0,255,100,.08),inset 0 0 35px rgba(0,255,100,.025);backdrop-filter:blur(16px)}
+.logo{display:flex;align-items:center;gap:14px;margin-bottom:24px}
+.mark{width:58px;height:58px;border-radius:14px;display:grid;place-items:center;background:#00ff66;color:#001a08;font-size:21px;font-weight:900;box-shadow:0 0 25px rgba(0,255,100,.25)}
+h1{font-size:16px;margin:0;text-transform:uppercase;letter-spacing:.16em}
+.brand{font-size:10px;color:#70a983;margin-top:6px;letter-spacing:.12em}
+.status{display:flex;justify-content:space-between;border:1px solid rgba(0,255,100,.12);padding:10px 12px;border-radius:9px;color:#6ea17e;font-size:10px;letter-spacing:.12em;margin-bottom:25px}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#00ff66;box-shadow:0 0 12px #00ff66;margin-right:7px}
+h2{margin:0 0 8px;font-size:31px}
+.desc{margin:0 0 22px;color:#82a88f;font-size:13px;line-height:1.6}
+label{display:block;color:#78a88a;font-size:10px;letter-spacing:.14em;text-transform:uppercase;margin-bottom:8px}
+.field{position:relative}
+input{width:100%;height:54px;padding:0 82px 0 15px;border:1px solid rgba(0,255,100,.24);border-radius:11px;background:#010604;color:#ecfff3;font-size:17px;outline:none;text-transform:none;letter-spacing:.03em}
+input:focus{border-color:#00ff66;box-shadow:0 0 0 3px rgba(0,255,100,.08)}
+input::placeholder{color:#42634d;text-transform:none}
+.show{position:absolute;right:7px;bottom:7px;height:40px;padding:0 11px;border:1px solid rgba(0,255,100,.16);border-radius:8px;background:rgba(0,255,100,.06);color:#82c998;cursor:pointer}
+.enter{width:100%;height:54px;margin-top:14px;border:0;border-radius:11px;background:#00ff66;color:#001607;font-size:13px;font-weight:900;letter-spacing:.1em;cursor:pointer;box-shadow:0 0 25px rgba(0,255,100,.11)}
+.enter:active{transform:scale(.99)}
+.msg{height:22px;margin-top:12px;text-align:center;font-size:11px;letter-spacing:.08em}
+.err{color:#ff657d}.ok{color:#54ff9a}
+.info{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:20px}
+.info div{padding:10px 6px;text-align:center;border:1px solid rgba(0,255,100,.08);border-radius:9px;color:#51745d;font-size:9px;letter-spacing:.08em}
+.info b{display:block;color:#99cba8;margin-top:4px;font-size:10px}
+.footer{text-align:center;color:#45634e;font-size:9px;letter-spacing:.12em;margin-top:18px}
+</style>
 </head>
 <body>
-<main class="access-shell">
 <canvas id="matrix"></canvas>
-<div class="scanlines"></div>
-<div class="vignette"></div>
+<div class="overlay"></div>
 
-<section class="access-card">
-  <div class="brand">
-    <div class="brand-mark">NB</div>
+<div class="wrap">
+<section class="card">
+  <div class="logo">
+    <div class="mark">NB</div>
     <div>
       <h1>NAYEM BOSS Social Automation</h1>
-      <p>SECURE CONTROL CORE // SERVER AUTOMATION</p>
+      <div class="brand">SECURE CONTROL CORE // 8 OFFICIAL CONNECTORS</div>
     </div>
   </div>
 
-  <div class="status-line">
-    <span><span class="status-dot"></span>WORKSPACE LOCKED</span>
-    <span>NBSA ACCESS</span>
+  <div class="status">
+    <span><span class="dot"></span>SYSTEM ONLINE</span>
+    <span>ACCESS GATE</span>
   </div>
 
   <h2>Welcome back</h2>
-  <p class="sub">Enter the workspace password to access the control panel.</p>
+  <p class="desc">Enter your workspace password to continue.</p>
 
-  <form id="accessForm" autocomplete="off">
+  <form id="gate" autocomplete="off">
+    <label for="pw">Workspace password</label>
     <div class="field">
-      <label for="accessPassword">Workspace password</label>
-      <input
-        id="accessPassword"
-        name="password"
-        type="password"
+      <input id="pw" type="password" name="password"
+        placeholder="Enter password"
         autocomplete="off"
         autocapitalize="none"
         spellcheck="false"
-        placeholder="Enter password"
-        maxlength="128"
-        required
-      >
-      <button class="show-pass" id="showPassword" type="button">SHOW</button>
+        required>
+      <button class="show" id="show" type="button">SHOW</button>
     </div>
 
-    <button class="submit" type="submit">ENTER WORKSPACE</button>
-    <div id="accessMessage" class="message" aria-live="polite"></div>
+    <button class="enter" type="submit">ENTER WORKSPACE</button>
+    <div id="msg" class="msg"></div>
   </form>
 
-  <div class="meta">
-    <div>CORE <b>ONLINE</b></div>
-    <div>PLATFORMS <b>8 OFFICIAL</b></div>
-    <div>QUEUE <b>READY</b></div>
+  <div class="info">
+    <div>CORE<b>ONLINE</b></div>
+    <div>PLATFORMS<b>8</b></div>
+    <div>QUEUE<b>READY</b></div>
   </div>
 
-  <div class="access-footer">AUTHORIZED WORKSPACE // NBSA // 2026</div>
+  <div class="footer">AUTHORIZED WORKSPACE // NAYEM BOSS // 2026</div>
 </section>
-</main>
+</div>
 
 <script>
-(function () {
-  const ADMIN_PASSWORD = "Akib9990";
-  const USER_PASSWORD = "bnb999";
+/* =========================================================
+   NBSA FRONTEND ACCESS
+   Admin password: Akib9990
+   User password : bnb999
+   ========================================================= */
 
-  const form = document.getElementById("accessForm");
-  const input = document.getElementById("accessPassword");
-  const show = document.getElementById("showPassword");
-  const msg = document.getElementById("accessMessage");
+const ADMIN_PASSWORD = "Akib9990";
+const USER_PASSWORD  = "bnb999";
 
-  function setAccess(role) {
-    sessionStorage.setItem("nbsa_access_role", role);
-    sessionStorage.setItem("nbsa_access_at", new Date().toISOString());
+const form = document.getElementById("gate");
+const pw   = document.getElementById("pw");
+const msg  = document.getElementById("msg");
+const show = document.getElementById("show");
 
-    /* Compatibility with the old frontend auth layer */
-    localStorage.setItem("nbsa_access_role", role);
-    localStorage.setItem("nbsa_access_at", new Date().toISOString());
+show.onclick = () => {
+  if (pw.type === "password") {
+    pw.type = "text";
+    show.textContent = "HIDE";
+  } else {
+    pw.type = "password";
+    show.textContent = "SHOW";
+  }
+  pw.focus();
+};
 
-    window.location.replace("./dashboard.html");
+form.onsubmit = (e) => {
+  e.preventDefault();
+
+  const value = pw.value;
+
+  if (value === ADMIN_PASSWORD) {
+    sessionStorage.setItem("nbsa_access_role","admin");
+    localStorage.setItem("nbsa_access_role","admin");
+    sessionStorage.setItem("nbsa_access","1");
+    localStorage.setItem("nbsa_access","1");
+    msg.className = "msg ok";
+    msg.textContent = "ACCESS GRANTED // ADMIN";
+    setTimeout(() => location.href = "./dashboard.html?v=20261001", 150);
+    return;
   }
 
-  show.addEventListener("click", function () {
-    const visible = input.type === "text";
-    input.type = visible ? "password" : "text";
-    show.textContent = visible ? "SHOW" : "HIDE";
-    input.focus();
-  });
-
-  form.addEventListener("submit", function (event) {
-    event.preventDefault();
-
-    const password = String(input.value || "").trim();
-
-    msg.className = "message";
-    msg.textContent = "";
-
-    if (!password) {
-      msg.className = "message error";
-      msg.textContent = "PASSWORD REQUIRED";
-      input.focus();
-      return;
-    }
-
-    if (password === ADMIN_PASSWORD) {
-      msg.className = "message ok";
-      msg.textContent = "ACCESS GRANTED // ADMIN";
-      setAccess("admin");
-      return;
-    }
-
-    if (password === USER_PASSWORD) {
-      msg.className = "message ok";
-      msg.textContent = "ACCESS GRANTED // USER";
-      setAccess("user");
-      return;
-    }
-
-    msg.className = "message error";
-    msg.textContent = "ACCESS DENIED // INVALID PASSWORD";
-    input.select();
-  });
-
-  const canvas = document.getElementById("matrix");
-  const ctx = canvas.getContext("2d");
-  const chars = "01ABCDEFGHIJKLMNOPQRSTUVWXYZ#$%&<>[]{}";
-  let drops = [];
-
-  function resize() {
-    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
-    canvas.width = innerWidth * dpr;
-    canvas.height = innerHeight * dpr;
-    canvas.style.width = innerWidth + "px";
-    canvas.style.height = innerHeight + "px";
-    ctx.setTransform(dpr,0,0,dpr,0,0);
-    drops = Array.from(
-      { length: Math.ceil(innerWidth / 14) },
-      () => Math.random() * -60
-    );
+  if (value === USER_PASSWORD) {
+    sessionStorage.setItem("nbsa_access_role","user");
+    localStorage.setItem("nbsa_access_role","user");
+    sessionStorage.setItem("nbsa_access","1");
+    localStorage.setItem("nbsa_access","1");
+    msg.className = "msg ok";
+    msg.textContent = "ACCESS GRANTED // USER";
+    setTimeout(() => location.href = "./dashboard.html?v=20261001", 150);
+    return;
   }
 
-  function draw() {
-    ctx.fillStyle = "rgba(0,4,2,.11)";
-    ctx.fillRect(0,0,innerWidth,innerHeight);
-    ctx.font = "12px monospace";
-    ctx.fillStyle = "#00ff73";
+  msg.className = "msg err";
+  msg.textContent = "ACCESS DENIED // INVALID PASSWORD";
+  pw.select();
+};
 
-    for (let i = 0; i < drops.length; i++) {
-      const x = i * 14;
-      const y = drops[i] * 14;
-      ctx.fillText(chars[Math.floor(Math.random() * chars.length)], x, y);
+const canvas = document.getElementById("matrix");
+const ctx = canvas.getContext("2d");
+const chars = "01ABCDEFGHIJKLMNOPQRSTUVWXYZ#$%&<>[]{}";
+let drops = [];
 
-      if (y > innerHeight && Math.random() > .975) drops[i] = 0;
-      drops[i] += .55;
-    }
+function resize(){
+  const dpr = Math.max(1,Math.min(2,devicePixelRatio||1));
+  canvas.width = innerWidth*dpr;
+  canvas.height = innerHeight*dpr;
+  canvas.style.width = innerWidth+"px";
+  canvas.style.height = innerHeight+"px";
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  drops = Array.from({length:Math.ceil(innerWidth/14)},()=>Math.random()*-80);
+}
 
-    requestAnimationFrame(draw);
+function matrix(){
+  ctx.fillStyle = "rgba(0,4,2,.11)";
+  ctx.fillRect(0,0,innerWidth,innerHeight);
+  ctx.font = "12px monospace";
+  ctx.fillStyle = "#00ff66";
+
+  for(let i=0;i<drops.length;i++){
+    const x=i*14;
+    const y=drops[i]*14;
+    ctx.fillText(chars[Math.floor(Math.random()*chars.length)],x,y);
+    if(y>innerHeight && Math.random()>.975) drops[i]=0;
+    drops[i]+=0.55;
   }
 
-  addEventListener("resize", resize);
-  resize();
-  draw();
-})();
+  requestAnimationFrame(matrix);
+}
+
+addEventListener("resize",resize);
+resize();
+matrix();
+pw.focus();
 </script>
 </body>
 </html>
