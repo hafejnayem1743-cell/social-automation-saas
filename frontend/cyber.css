@@ -34,18 +34,7 @@ body{
     #020606;
 }
 
-body::before{
-  content:"";
-  position:fixed;
-  inset:0;
-  z-index:-3;
-  pointer-events:none;
-  background-image:
-    linear-gradient(rgba(49,255,145,.045) 1px,transparent 1px),
-    linear-gradient(90deg,rgba(49,255,145,.045) 1px,transparent 1px);
-  background-size:30px 30px;
-  animation:nbGrid 18s linear infinite;
-}
+body::before{display:none}
 
 body::after{
   content:"";
@@ -62,8 +51,7 @@ body::after{
 
 body>*{position:relative}
 
-@keyframes nbGrid{
-  from{transform:translate3d(0,0,0)}
+
   to{transform:translate3d(30px,30px,0)}
 }
 @keyframes nbGlow{

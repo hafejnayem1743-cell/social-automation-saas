@@ -7,12 +7,8 @@
 <title>NAYEM BOSS // ACCESS</title>
 <style>
 *{box-sizing:border-box}
-html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#020504;color:#d9ffe7;font-family:Arial,Helvetica,sans-serif}
-body{background:
-radial-gradient(circle at 50% 45%,rgba(0,255,100,.10),transparent 35%),
-linear-gradient(135deg,#010302,#031008 55%,#010302)}
-#matrix{position:fixed;inset:0;width:100%;height:100%;opacity:.20}
-.overlay{position:fixed;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,transparent 0,transparent 3px,rgba(0,255,100,.025) 4px)}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f6f8fb;color:#172033;font-family:Arial,Helvetica,sans-serif}
+body{background:#f6f8fb;color:#172033}
 .wrap{position:relative;z-index:2;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
 .card{width:min(470px,100%);padding:30px;border:1px solid rgba(0,255,100,.28);border-radius:22px;background:rgba(1,10,5,.90);box-shadow:0 0 50px rgba(0,255,100,.08),inset 0 0 35px rgba(0,255,100,.025);backdrop-filter:blur(16px)}
 .logo{display:flex;align-items:center;gap:14px;margin-bottom:24px}
@@ -40,7 +36,6 @@ input::placeholder{color:#42634d;text-transform:none}
 </style>
 </head>
 <body>
-<canvas id="matrix"></canvas>
 <div class="overlay"></div>
 
 <div class="wrap">
@@ -140,42 +135,6 @@ sessionStorage.setItem("nbsa_access","1");
   msg.textContent = "ACCESS DENIED // INVALID PASSWORD";
   pw.select();
 };
-
-const canvas = document.getElementById("matrix");
-const ctx = canvas.getContext("2d");
-const chars = "01ABCDEFGHIJKLMNOPQRSTUVWXYZ#$%&<>[]{}";
-let drops = [];
-
-function resize(){
-  const dpr = Math.max(1,Math.min(2,devicePixelRatio||1));
-  canvas.width = innerWidth*dpr;
-  canvas.height = innerHeight*dpr;
-  canvas.style.width = innerWidth+"px";
-  canvas.style.height = innerHeight+"px";
-  ctx.setTransform(dpr,0,0,dpr,0,0);
-  drops = Array.from({length:Math.ceil(innerWidth/14)},()=>Math.random()*-80);
-}
-
-function matrix(){
-  ctx.fillStyle = "rgba(0,4,2,.11)";
-  ctx.fillRect(0,0,innerWidth,innerHeight);
-  ctx.font = "12px monospace";
-  ctx.fillStyle = "#00ff66";
-
-  for(let i=0;i<drops.length;i++){
-    const x=i*14;
-    const y=drops[i]*14;
-    ctx.fillText(chars[Math.floor(Math.random()*chars.length)],x,y);
-    if(y>innerHeight && Math.random()>.975) drops[i]=0;
-    drops[i]+=0.55;
-  }
-
-  requestAnimationFrame(matrix);
-}
-
-addEventListener("resize",resize);
-resize();
-matrix();
 pw.focus();
 </script>
 </body>

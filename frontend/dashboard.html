@@ -1,7 +1,6 @@
 <!doctype html>
 <html lang="en">
 <head>
-<link rel="stylesheet" href="./cyber.css">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>NAYEM BOSS SOCIAL AUTOMATION</title>
@@ -177,46 +176,7 @@ pre{
 }
 </style>
 
-<style id="nbsa-live-cyber">
-body{
-  position:relative;
-  background:#020606 !important;
-}
-body::before{
-  content:"";
-  position:fixed;
-  inset:0;
-  z-index:-3;
-  pointer-events:none;
-  background-image:
-    linear-gradient(rgba(49,255,145,.035) 1px,transparent 1px),
-    linear-gradient(90deg,rgba(49,255,145,.035) 1px,transparent 1px);
-  background-size:30px 30px;
-  animation:nbsaGridMove 18s linear infinite;
-}
-body::after{
-  content:"";
-  position:fixed;
-  width:55vw;
-  height:55vw;
-  left:-18vw;
-  top:-18vw;
-  z-index:-2;
-  pointer-events:none;
-  border-radius:50%;
-  background:rgba(49,255,145,.06);
-  filter:blur(70px);
-  animation:nbsaGlowMove 9s ease-in-out infinite alternate;
-}
-@keyframes nbsaGridMove{
-  from{transform:translate(0,0)}
-  to{transform:translate(30px,30px)}
-}
-@keyframes nbsaGlowMove{
-  from{transform:translate(0,0) scale(.95)}
-  to{transform:translate(80px,55px) scale(1.08)}
-}
-</style>
+<style id="nbsa-live-cyber">html,body{background:#f6f8fb!important;color:#172033!important}</style>
 </head>
 <body>
 <div id="root"></div>
