@@ -1,21 +1,25 @@
 :root{
-  --nb-bg:#020606;
-  --nb-panel:#061012;
-  --nb-panel2:#08171a;
-  --nb-line:#15373a;
-  --nb-green:#31ff91;
-  --nb-green2:#11c978;
-  --nb-cyan:#39eaff;
-  --nb-text:#ddfff0;
-  --nb-muted:#789a91;
+  --nb-bg:#0b1118;
+  --nb-panel:#111a24;
+  --nb-panel2:#162230;
+  --nb-line:#263544;
+  --nb-green:#31d98b;
+  --nb-green2:#20b978;
+  --nb-cyan:#39c9e8;
+  --nb-text:#e7eef5;
+  --nb-muted:#91a3b3;
   --nb-red:#ff6385;
   --nb-yellow:#ffd96b;
 }
+
 *,
 *::before,
-*::after{box-sizing:border-box}
+*::after{
+  box-sizing:border-box;
+}
 
-html,body{
+html,
+body{
   margin:0;
   min-height:100%;
   background:var(--nb-bg);
@@ -28,20 +32,32 @@ body{
   font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
   text-transform:none !important;
   letter-spacing:normal !important;
+
+  /* Clean professional background */
   background:
-    radial-gradient(circle at 15% 15%,rgba(49,255,145,.055),transparent 28%),
-    radial-gradient(circle at 85% 75%,rgba(17,201,120,.045),transparent 30%),
-    #020606;
+    radial-gradient(
+      circle at 50% 0%,
+      #172431 0%,
+      #0b1118 42%,
+      #070c12 100%
+    );
 }
 
-body::before{display:none}
+body::before,
+body::after{
+  display:none !important;
+  content:none !important;
+}
 
-body>*{position:relative}
+body>*{
+  position:relative;
+  z-index:1;
+}
 
-to{transform:translate3d(2%, 2%,0) scale(1.07)}
-
-
-button,input,textarea,select{
+button,
+input,
+textarea,
+select{
   font:inherit;
   text-transform:none !important;
   letter-spacing:normal !important;
@@ -55,14 +71,19 @@ select{
 
 input::placeholder,
 textarea::placeholder{
-  color:#58756e;
+  color:#718596;
   text-transform:none !important;
 }
 
-button{cursor:pointer}
-a{text-transform:none !important}
+button{
+  cursor:pointer;
+}
+
+a{
+  text-transform:none !important;
+}
 
 ::selection{
-  background:rgba(49,255,145,.25);
+  background:rgba(49,217,139,.25);
   color:#fff;
 }
