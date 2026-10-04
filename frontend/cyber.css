@@ -36,27 +36,10 @@ body{
 
 body::before{display:none}
 
-body::after{
-  content:"";
-  position:fixed;
-  inset:-30%;
-  z-index:-2;
-  pointer-events:none;
-  background:
-    radial-gradient(circle at 35% 35%,rgba(49,255,145,.09),transparent 18%),
-    radial-gradient(circle at 70% 65%,rgba(49,255,145,.06),transparent 20%);
-  filter:blur(35px);
-  animation:nbGlow 9s ease-in-out infinite alternate;
-}
-
 body>*{position:relative}
 
+to{transform:translate3d(2%, 2%,0) scale(1.07)}
 
-}
-@keyframes nbGlow{
-  from{transform:translate3d(-2%, -1%,0) scale(1)}
-  to{transform:translate3d(2%, 2%,0) scale(1.07)}
-}
 
 button,input,textarea,select{
   font:inherit;
